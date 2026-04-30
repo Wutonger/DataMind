@@ -1,0 +1,24 @@
+server:
+  port: 8081
+
+spring:
+  ai:
+    mcp:
+      server:
+        name: datamine-mcp-server
+        version: 1.0.0
+        sse-endpoint: /sse
+        sse-message-endpoint: /mcp/message
+  datasource:
+    url: ${MAIN_DB_URL:jdbc:mysql://localhost:3306/datamine?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${MAIN_DB_USER:root}
+    password: ${MAIN_DB_PASSWORD:19971019lx}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+logging:
+  level:
+    com.datamine: INFO

@@ -1,0 +1,361 @@
+<template>
+  <n-config-provider :theme-overrides="themeOverrides">
+    <n-message-provider>
+      <n-dialog-provider>
+        <n-notification-provider>
+          <div class="app-shell">
+            <aside class="sidebar-panel">
+              <div class="brand-block">
+                <div class="brand-copy">
+                  <h1>DataMind</h1>
+                </div>
+              </div>
+
+              <div class="sidebar-section-label">导航</div>
+              <n-menu
+                v-model:value="activeKey"
+                :options="menuOptions"
+                @update:value="handleMenuSelect"
+              />
+            </aside>
+
+            <main class="workspace-shell">
+              <header class="workspace-topbar">
+                <h2>{{ currentTitle }}</h2>
+              </header>
+
+              <div class="workspace-body">
+                <router-view />
+              </div>
+            </main>
+          </div>
+        </n-notification-provider>
+      </n-dialog-provider>
+    </n-message-provider>
+  </n-config-provider>
+</template>
+
+<script setup lang="ts">
+import { Component, computed, h, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  AnalyticsOutline,
+  BarChartOutline,
+  ChatbubbleEllipsesOutline,
+  GitNetworkOutline,
+  LinkOutline,
+  LibraryOutline,
+  SettingsOutline,
+  ShareSocialOutline,
+  TerminalOutline
+} from '@vicons/ionicons5'
+import {
+  NConfigProvider,
+  NDialogProvider,
+  NIcon,
+  NMenu,
+  NMessageProvider,
+  NNotificationProvider
+} from 'naive-ui'
+import type { GlobalThemeOverrides, MenuOption } from 'naive-ui'
+import { useAppStore } from '@/stores/app'
+
+const router = useRouter()
+const route = useRoute()
+const appStore = useAppStore()
+
+type MenuMeta = {
+  key: string
+  label: string
+  icon: Component
+}
+
+const menuItems: MenuMeta[] = [
+  { key: 'Dashboard', label: '首页', icon: AnalyticsOutline },
+  { key: 'Connections', label: '连接管理', icon: LinkOutline },
+  { key: 'Analysis', label: '表结构', icon: GitNetworkOutline },
+  { key: 'SqlStudio', label: 'SQL 工作台', icon: TerminalOutline },
+  { key: 'Chat', label: '智能问答', icon: ChatbubbleEllipsesOutline },
+  { key: 'Workflow', label: '执行链路', icon: ShareSocialOutline },
+  { key: 'Reports', label: '报表中心', icon: BarChartOutline },
+  { key: 'Knowledge', label: '知识库', icon: LibraryOutline },
+  { key: 'Settings', label: '系统设置', icon: SettingsOutline }
+]
+
+const routeMetaMap = Object.fromEntries(menuItems.map((item) => [item.key, item]))
+const renderIcon = (icon: Component) => () => h(NIcon, { size: 18 }, { default: () => h(icon) })
+
+const savedKey = localStorage.getItem('activeMenuKey') || String(route.name || 'Dashboard')
+const activeKey = ref(savedKey)
+
+const menuOptions: MenuOption[] = menuItems.map((item) => ({
+  key: item.key,
+  label: item.label,
+  icon: renderIcon(item.icon)
+}))
+
+const currentMeta = computed(() => routeMetaMap[String(route.name)] || menuItems[0])
+const currentTitle = computed(() => currentMeta.value.label)
+
+const themeOverrides: GlobalThemeOverrides = {
+  common: {
+    primaryColor: '#ef5b2a',
+    primaryColorHover: '#e25221',
+    primaryColorPressed: '#cb4416',
+    primaryColorSuppl: '#ef5b2a',
+    infoColor: '#d64550',
+    successColor: '#1f8a63',
+    warningColor: '#f08a24',
+    errorColor: '#c85547',
+    borderRadius: '14px',
+    fontFamily: 'var(--font-body)',
+    fontFamilyMono: 'var(--font-mono)'
+  },
+  Button: {
+    borderRadiusMedium: '12px',
+    borderRadiusSmall: '12px',
+    heightMedium: '40px',
+    heightSmall: '34px',
+    textColorPrimary: '#fff8f4',
+    colorPrimary: '#ef5b2a',
+    colorPrimaryHover: '#e25221',
+    colorPrimaryPressed: '#cb4416'
+  },
+  Menu: {
+    color: 'transparent',
+    itemColorHover: 'rgba(239, 91, 42, 0.06)',
+    itemColorActive: 'rgba(239, 91, 42, 0.12)',
+    itemColorActiveHover: 'rgba(239, 91, 42, 0.16)',
+    itemTextColor: '#6e5548',
+    itemTextColorHover: '#3f3129',
+    itemTextColorActive: '#3f3129',
+    itemTextColorActiveHover: '#3f3129',
+    itemTextColorChildActive: '#3f3129',
+    itemTextColorChildActiveHover: '#3f3129',
+    itemIconColor: '#b47a62',
+    itemIconColorHover: '#ef5b2a',
+    itemIconColorActive: '#ef5b2a',
+    itemIconColorActiveHover: '#ef5b2a',
+    itemIconColorChildActive: '#ef5b2a',
+    itemIconColorChildActiveHover: '#ef5b2a'
+  },
+  Tabs: {
+    colorSegment: 'rgba(239, 91, 42, 0.08)',
+    tabColorSegment: '#ef5b2a',
+    tabTextColorSegment: '#8f6b5a',
+    tabTextColorHoverSegment: '#ef5b2a',
+    tabTextColorActiveSegment: '#fff8f4',
+    barColor: '#ef5b2a',
+    tabTextColorActiveLine: '#ef5b2a',
+    tabTextColorHoverLine: '#ef5b2a',
+    tabTextColorActiveBar: '#ef5b2a',
+    tabTextColorHoverBar: '#ef5b2a',
+    tabTextColorActiveCard: '#ef5b2a',
+    tabTextColorHoverCard: '#ef5b2a'
+  },
+  Card: {
+    borderRadius: '18px'
+  },
+  Input: {
+    borderRadius: '14px'
+  },
+  Select: {
+    peers: {
+      InternalSelection: {
+        borderRadius: '14px'
+      }
+    }
+  },
+  Modal: {
+    borderRadius: '18px'
+  }
+}
+
+watch(activeKey, (newVal) => {
+  localStorage.setItem('activeMenuKey', newVal)
+})
+
+watch(
+  () => route.name,
+  (newVal) => {
+    if (newVal) {
+      activeKey.value = String(newVal)
+    }
+  }
+)
+
+onMounted(() => {
+  appStore.loadActiveConnection()
+})
+
+const handleMenuSelect = (key: string) => {
+  router.push({ name: key })
+}
+</script>
+
+<style scoped>
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
+  align-items: start;
+  height: 100vh;
+  min-height: 100vh;
+  gap: 16px;
+  padding: 16px;
+}
+
+.sidebar-panel {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+  max-height: calc(100vh - 32px);
+  padding: 22px 16px 16px;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(115, 77, 57, 0.12);
+  box-shadow: 0 12px 30px rgba(122, 65, 35, 0.08);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.brand-block {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.brand-copy {
+  width: 100%;
+  text-align: center;
+}
+
+.brand-copy h1 {
+  margin: 0;
+  color: #3f3129;
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: -0.05em;
+}
+
+.sidebar-section-label {
+  margin: 6px 0 10px;
+  padding-left: 10px;
+  color: #b47a62;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.workspace-shell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100vh - 32px);
+}
+
+.workspace-topbar {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px 2px;
+}
+
+.workspace-topbar h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-family: var(--font-display);
+  font-size: clamp(26px, 3vw, 34px);
+  letter-spacing: -0.05em;
+}
+
+.workspace-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.sidebar-panel :deep(.n-menu) {
+  background: transparent !important;
+}
+
+.sidebar-panel :deep(.n-menu-item-content) {
+  position: relative;
+  margin: 4px 0;
+  min-height: 46px;
+  border-radius: 14px !important;
+  overflow: hidden;
+  transition: background 0.18s ease;
+}
+
+.sidebar-panel :deep(.n-menu-item-content::before) {
+  border-radius: 14px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.sidebar-panel :deep(.n-menu-item-content-header) {
+  color: #6e5548;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sidebar-panel :deep(.n-menu-item-content__icon) {
+  color: #b47a62;
+}
+
+.sidebar-panel :deep(.n-menu-item-content:hover) {
+  background: rgba(239, 91, 42, 0.06);
+}
+
+.sidebar-panel :deep(.n-menu-item-content:hover .n-menu-item-content-header),
+.sidebar-panel :deep(.n-menu-item-content:hover .n-menu-item-content__icon) {
+  color: #ef5b2a;
+}
+
+.sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected) {
+  background: rgba(239, 91, 42, 0.12);
+}
+
+.sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected:hover) {
+  background: rgba(239, 91, 42, 0.16);
+}
+
+.sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header),
+.sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon) {
+  color: #3f3129;
+}
+
+@media (max-width: 920px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-panel {
+    position: relative;
+    top: 0;
+    align-self: stretch;
+    height: auto;
+    max-height: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .workspace-shell {
+    min-height: auto;
+    height: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    padding: 12px;
+    gap: 12px;
+  }
+}
+</style>

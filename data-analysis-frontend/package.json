@@ -1,0 +1,35 @@
+{
+  "name": "data-analysis-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
+  },
+  "dependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/marked": "^5.0.2",
+    "@vicons/ionicons5": "^0.13.0",
+    "@vueuse/core": "^10.9.0",
+    "axios": "^1.6.8",
+    "crypto-js": "^4.2.0",
+    "echarts": "^5.5.0",
+    "jspdf": "^4.2.1",
+    "marked": "^18.0.2",
+    "mermaid": "^11.14.0",
+    "naive-ui": "^2.38.1",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.5",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vue-tsc": "^2.0.11"
+  }
+}

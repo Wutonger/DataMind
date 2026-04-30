@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DataMind favicon">
+  <rect width="64" height="64" rx="16" fill="#fff7f2" />
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="none" stroke="#f3d8ca" />
+  <path d="M20 15h12c11.6 0 19 6.6 19 17s-7.4 17-19 17H20V15z" fill="#ef5b2a" />
+  <path d="M29 23h3.5c5.8 0 9.5 3.4 9.5 9s-3.7 9-9.5 9H29V23z" fill="#fff7f2" />
+  <rect x="43" y="18" width="8" height="8" rx="2.5" fill="#d64550" />
+</svg>
