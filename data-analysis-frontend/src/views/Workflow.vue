@@ -47,7 +47,7 @@
           :pagination="false"
           :row-key="rowKey"
           :row-props="rowProps"
-          :scroll-x="1030"
+          :scroll-x="920"
           :single-line="false"
           striped
           size="small"
@@ -108,7 +108,7 @@
             </n-tag>
           </div>
           <div class="workflow-detail-fact">
-            <span>开始时间</span>
+            <span>触发时间</span>
             <strong>{{ formatDateTime(selectedRun.startedAt) }}</strong>
           </div>
           <div class="workflow-detail-fact">
@@ -306,14 +306,14 @@ const columns: DataTableColumns<WorkflowRun> = [
   {
     title: '名称',
     key: 'title',
-    minWidth: 220,
+    minWidth: 200,
     render: (run) =>
       h('span', { class: 'workflow-run-name' }, run.title || '未命名运行')
   },
   {
     title: '执行 ID',
     key: 'id',
-    minWidth: 240,
+    minWidth: 210,
     render: (run) => h('span', { class: 'workflow-id-cell' }, run.id)
   },
   {
@@ -340,13 +340,7 @@ const columns: DataTableColumns<WorkflowRun> = [
     render: (run) => formatDuration(run.totalDurationMs)
   },
   {
-    title: '步骤/事件',
-    key: 'counts',
-    width: 120,
-    render: (run) => `${run.steps.length} / ${run.timeline.length}`
-  },
-  {
-    title: '开始时间',
+    title: '触发时间',
     key: 'startedAt',
     width: 150,
     render: (run) => formatDateTime(run.startedAt)

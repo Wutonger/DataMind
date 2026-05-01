@@ -10,8 +10,7 @@
       <div class="settings-layout">
         <div class="settings-card">
           <div class="settings-card-head">
-            <span class="settings-card-kicker">接入</span>
-            <h4>接入配置</h4>
+            <span class="settings-card-kicker">接入配置</span>
           </div>
 
           <n-form :model="aiConfig" label-placement="top" class="settings-form-grid">
@@ -36,7 +35,6 @@
           <div class="settings-card">
             <div class="settings-card-head">
               <span class="settings-card-kicker">语言模型</span>
-              <h4>语言模型</h4>
             </div>
 
             <n-form :model="aiConfig" label-placement="top" class="settings-form-grid settings-form-single">
@@ -77,7 +75,6 @@
           <div class="settings-card">
             <div class="settings-card-head">
               <span class="settings-card-kicker">向量模型</span>
-              <h4>向量模型</h4>
             </div>
 
             <n-form :model="aiConfig" label-placement="top" class="settings-form-grid settings-form-single">
@@ -192,7 +189,7 @@ onMounted(() => {
 .settings-card-head {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   margin-bottom: 18px;
 }
 
@@ -200,23 +197,14 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  padding: 0 10px;
-  height: 24px;
+  min-height: 30px;
+  padding: 0 14px;
   border-radius: 999px;
   background: var(--surface-active);
   color: var(--primary-color-strong);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.settings-card-head h4 {
-  margin: 0;
-  color: var(--text-color);
-  font-family: var(--font-display);
-  font-size: 19px;
-  letter-spacing: -0.03em;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .settings-form-grid {
