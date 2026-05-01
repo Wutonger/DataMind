@@ -1,222 +1,286 @@
-# AI 数据分析平台 - 实施任务清单
+# DataMind AI V1 任务清单
 
-## Phase 1: 项目初始化
+本文档按 V1 从零建设的方式整理当前任务清单。除“测试与验收”模块外，其余模块均视为已完成。
 
-### 1.1 后端 Spring Boot 项目初始化
-- [x] 1.1.1 创建 Maven 多模块项目结构
-- [x] 1.1.2 配置 pom.xml (Spring Boot 3.2+, Spring AI 1.0.0-M6, MySQL)
-- [x] 1.1.3 配置 application.yml
-- [x] 1.1.4 创建启动类 DataAnalysisApplication
+## Phase 1：项目初始化
 
-### 1.2 前端 Vue 3 项目初始化
-- [x] 1.2.1 使用 Vite 创建 Vue 3 + TypeScript 项目
-- [x] 1.2.2 安装依赖 (Vue Router, Pinia, Axios, ECharts, Naive UI)
-- [x] 1.2.3 配置项目结构 (views, components, stores, api)
-- [x] 1.2.4 配置全局样式和主题
+### 1.1 后端工程初始化
 
-### 1.3 AI 模型配置数据化 (最高优先级)
-- [x] 1.3.1 创建 AppConfig 实体 (存储 AI 模型配置到数据库)
-- [x] 1.3.2 创建 AppConfig Repository
-- [x] 1.3.3 实现 AppConfig Service (CRUD)
-- [x] 1.3.4 实现 AppConfig API (GET/PUT /api/config)
-- [x] 1.3.5 前端 Settings 页面对接后端 API
-- [x] 1.3.6 后端启动时从数据库加载 AI 配置
+- [x] 创建 Maven 多模块工程
+- [x] 配置父级 `pom.xml`
+- [x] 配置 JDK 17 编译环境
+- [x] 初始化 `data-analysis-common`
+- [x] 初始化 `data-analysis-mcp-server`
+- [x] 初始化 `data-analysis-mcp-client`
+- [x] 初始化 `data-analysis-skills`
+- [x] 初始化 `data-analysis-agent`
+- [x] 初始化 `data-analysis-core`
+- [x] 初始化 `data-analysis-web`
 
----
+### 1.2 前端工程初始化
 
-## Phase 2: 基础设施层
+- [x] 使用 Vite 初始化 Vue 3 + TypeScript 项目
+- [x] 集成 Vue Router
+- [x] 集成 Pinia
+- [x] 集成 Naive UI
+- [x] 集成 ECharts
+- [x] 配置全局样式与基础布局
 
-### 2.1 数据库连接管理
-- [x] 2.1.1 创建 Connection 实体和 Repository
-- [x] 2.1.2 实现 DynamicDataSource 动态数据源路由
-- [x] 2.1.3 实现数据库连接测试服务
-- [x] 2.1.4 实现连接 CRUD API
-- [x] 2.1.5 实现连接激活/取消激活 API
-- [x] 2.1.6 实现密码 AES 加密存储
-- [x] 2.1.7 前端连接管理页面（添加/编辑/测试/删除/选中）
+### 1.3 基础运行环境
 
-### 2.2 MCP 协议层
-- [x] 2.2.1 搭建 MCP Server 模块（独立进程，端口8081）
-- [x] 2.2.2 配置 MCP SSE 传输（官方 spring-ai-mcp-server-spring-boot-starter）
-- [x] 2.2.3 创建 MCP Client（官方 spring-ai-mcp-client-spring-boot-starter + McpSyncClient）
-- [x] 2.2.4 实现底层工具：db_connect, db_execute, db_get_schema, db_list_tables, db_get_columns（@Tool 注解）
+- [x] 配置 MySQL 元数据库
+- [x] 提供初始化 SQL 脚本
+- [x] 配置前端代理到后端
+- [x] 配置 MCP Server 基础启动能力
 
-### 2.3 Chat 基础设施
-- [x] 2.3.1 配置动态 ChatClient（基于数据库 AI 配置）
-- [x] 2.3.2 创建 ChatMemory 内存管理
-- [x] 2.3.3 实现消息压缩器 (MessageCompressor)
-- [x] 2.3.4 配置 ChatClient + Memory 集成
+## Phase 2：基础设施建设
 
----
+### 2.1 数据源管理
 
-## Phase 3: Skills 业务技能层
+- [x] 设计连接管理数据表
+- [x] 实现连接实体与仓储层
+- [x] 实现连接新增、编辑、删除能力
+- [x] 实现连接测试能力
+- [x] 实现当前连接选择能力
+- [x] 实现连接密码加密存储
 
-### 3.1 技能定义
-- [x] 3.1.1 创建 SqlGenerationSkill
-- [x] 3.1.2 创建 TableAnalysisSkill
-- [x] 3.1.3 创建 DataQuerySkill
-- [x] 3.1.4 创建 ChartGenerationSkill
-- [x] 3.1.5 创建 DataQualitySkill
-- [x] 3.1.6 创建 InsightDiscoverySkill
-- [x] 3.1.7 创建 ReportExportSkill
-- [x] 3.1.8 创建 DataProfilingSkill
-- [x] 3.1.9 创建 AnomalyDetectionSkill
+### 2.2 MCP 基础设施
 
-### 3.2 技能注册
-- [x] 3.2.1 实现 SkillRegistry 技能注册表
-- [x] 3.2.2 实现 MethodToolCallbackProvider (BaseSkill + manual)
-- [x] 3.2.3 配置默认 Skills 到 ChatClient
+- [x] 实现独立 MCP Server 启动入口
+- [x] 配置 MCP SSE 端点
+- [x] 实现 MCP Client 接入
+- [x] 打通 MCP Tool 调用链路
 
-### 3.3 Agent 编排层
-- [x] 3.3.1 实现 IntentClassifier 意图识别器
-- [x] 3.3.2 实现 AgentOrchestrator 编排器
-- [x] 3.3.3 配置规则路由 (关键词匹配)
-- [x] 3.3.4 配置 AI 自主决策路由
-- [x] 3.3.5 实现混合路由策略
+### 2.3 数据库工具能力
 
----
+- [x] 实现 `db_connect`
+- [x] 实现 `db_execute`
+- [x] 实现 `db_get_schema`
+- [x] 实现 `db_list_tables`
+- [x] 实现 `db_get_columns`
+- [x] 实现数据库工具与当前连接上下文联动
 
-## Phase 4: 核心业务功能
+## Phase 3：Agent 与 Skill 编排层
 
-### 4.1 表结构分析
-- [x] 4.1.1 实现 TableScanner 扫描数据库表
-- [x] 4.1.2 实现 SchemaReader 读取表结构 (information_schema)
-- [x] 4.1.3 创建 TableMetadata 存储分析结果
-- [x] 4.1.4 实现 AI 表分析 Prompt 模板
-- [x] 4.1.5 提供表分析 API 和结果缓存
+### 3.1 Agent 编排
 
-### 4.2 自然语言转 SQL
-- [x] 4.2.1 实现 SqlGenerator 服务
-- [x] 4.2.2 实现 SQL 执行服务 (JdbcTemplate)
-- [x] 4.2.3 实现 SQL 格式化服务
-- [x] 4.2.4 创建 SQL 执行历史记录
-- [x] 4.2.5 提供自然语言转 SQL API
+- [x] 设计统一 Agent 编排入口
+- [x] 实现 `AssistantAgentOrchestrator`
+- [x] 支持问答场景编排
+- [x] 支持 SQL 生成场景编排
+- [x] 支持报表生成场景编排
+- [x] 支持结构化分析场景编排
 
-### 4.3 AI 智能问答
-- [x] 4.3.1 实现 ChatService 聊天服务
-- [x] 4.3.2 实现 ChatSession 会话管理（数据库持久化）
-- [x] 4.3.3 实现 MemoryCompression 记忆压缩
-- [ ] 4.3.4 配置 RAG 上下文注入
-- [x] 4.3.5 提供流式响应 (SSE)
+### 3.2 Skill 资源组织
 
-### 4.4 可视化报表
-- [x] 4.4.1 实现 ChartRecommendationService
-- [x] 4.4.2 创建 ChartConfig 生成器
-- [x] 4.4.3 实现 Report 实体和 CRUD
-- [x] 4.4.4 实现 PDF/Excel 导出
-- [x] 4.4.5 提供报表 API
+- [x] 建立 Skill 资源目录结构
+- [x] 接入 `knowledge-grounding`
+- [x] 接入 `artifact-generation`
+- [x] 接入 `insight-discovery`
+- [x] 实现 Skill 与 Tool 的协同装配
 
----
+### 3.3 Tool 调用过程管理
 
-## Phase 5: 前端开发
+- [x] 实现 Tool 名称规范化
+- [x] 实现 Tool 进度描述解析
+- [x] 实现 Tool 结果处理器
+- [x] 实现连接感知型 Tool Callback
+- [x] 支持 Tool 调用结果写回上下文状态
 
-### 5.1 基础框架
-- [x] 5.1.1 配置 Vue Router 路由
-- [x] 5.1.2 配置 Pinia Store
-- [x] 5.1.3 创建 Layout 布局组件
-- [x] 5.1.4 配置全局样式和主题
+## Phase 4：智能问答能力
 
-### 5.2 页面开发
-- [x] 5.2.1 Dashboard 首页
-- [x] 5.2.2 Connection 连接管理页面
-- [x] 5.2.3 TableAnalysis 表分析页面
-- [x] 5.2.4 SqlStudio SQL工作室页面
-- [x] 5.2.5 Chat 智能问答页面，上下文管理，压缩上下文
-- [x] 5.2.6 Report 报表中心页面
-- [x] 5.2.7 Knowledge 知识库管理页面（占位，后端在 Phase 6 实现）
+### 4.1 聊天主链路
 
-### 5.3 组件开发
-- [x] 5.3.1 ConnectionCard 连接卡片组件
-- [x] 5.3.2 SqlEditor SQL编辑器组件
-- [x] 5.3.3 ChatMessage 聊天消息组件
-- [x] 5.3.4 ChartRenderer 图表渲染组件
-- [x] 5.3.5 DataTable 数据表格组件
-- [x] 5.3.6 StatusBadge 状态徽章组件
+- [x] 实现聊天会话管理
+- [x] 实现流式输出
+- [x] 实现聊天历史持久化
+- [x] 实现上下文压缩
+- [x] 实现引用信息回传
 
-### 5.4 API 对接
-- [x] 5.4.1 实现 Axios API 服务层
-- [ ] 5.4.2 实现 WebSocket 服务
-- [x] 5.4.3 对接所有后端 API
+### 4.2 数据库增强问答
 
----
+- [x] 支持通过数据库工具回答结构与数据问题
+- [x] 支持当前连接上下文自动透传
+- [x] 支持最终回答与过程信息分离
 
-## Phase 6: 高级功能
+### 4.3 报表与知识相关调用
 
-### 6.1 知识库 + RAG
-- [ ] 6.1.1 实现文档上传服务 (PDF/MD/TXT/Excel)
-- [ ] 6.1.2 实现文档 Chunk 切分
-- [ ] 6.1.3 配置 Embedding 模型 (OpenAI/Local)
-- [ ] 6.1.4 实现向量存储 (MySQL Vector / Milvus)
-- [ ] 6.1.5 实现语义检索服务
-- [ ] 6.1.6 实现 RAG Prompt 注入
-- [ ] 6.1.7 知识库管理界面
+- [x] 支持在问答中触发知识库检索
+- [x] 支持在问答中触发图表报表保存
+- [x] 支持在问答中触发文档报告保存
 
-### 6.2 数据质量
-- [ ] 6.2.1 实现 NullDetection 空值检测
-- [ ] 6.2.2 实现 DuplicateDetection 重复检测
-- [ ] 6.2.3 实现 AnomalyDetection 异常检测
-- [ ] 6.2.4 实现 DataProfiling 数据画像
+## Phase 5：表结构分析
 
-### 6.3 表关联分析 (单库血缘)
-- [ ] 6.3.1 分析表间外键关联关系
-- [ ] 6.3.2 自动识别主键、外键、索引
-- [ ] 6.3.3 生成可视化 ER 图
+### 5.1 数据扫描与存储
 
-### 6.4 自动报告
-- [ ] 6.4.1 实现 Markdown 报告生成
-- [ ] 6.4.2 实现定时任务调度
-- [ ] 6.4.3 实现邮件推送功能
+- [x] 实现全库表扫描
+- [x] 实现字段结构读取
+- [x] 实现分析结果落库
+- [x] 设计表元数据结构
 
-### 6.5 SQL 优化
-- [ ] 6.5.1 实现 EXPLAIN 分析
-- [ ] 6.5.2 实现索引推荐
-- [ ] 6.5.3 实现性能对比
+### 5.2 AI 分析能力
 
----
+- [x] 生成表级中文业务描述
+- [x] 识别表间关系
+- [x] 支持分析进度输出
 
-## Phase 7: 优化与完善
+### 5.3 前端分析页面
 
-### 7.1 性能优化
-- [ ] 7.1.1 实现 Caffeine 本地缓存
-- [ ] 7.1.2 实现 Redis 分布式缓存
-- [ ] 7.1.3 优化大结果集处理
+- [x] 实现表分析页面
+- [x] 展示分析状态与结果
+- [x] 展示表描述与关系信息
 
-### 7.2 安全加固
-- [x] 7.2.1 密码加密存储 (AES)
-- [ ] 7.2.2 SQL 注入防护
-- [ ] 7.2.3 权限控制
+## Phase 6：SQL 工作台
 
-### 7.3 测试
-- [ ] 7.3.1 编写单元测试
-- [ ] 7.3.2 编写集成测试
-- [ ] 7.3.3 编写 E2E 测试
+### 6.1 SQL 生成
 
----
+- [x] 自然语言转 SQL
+- [x] 约束生成结果为可执行 SQL
+- [x] 记录生成历史
 
-## 任务依赖关系
+### 6.2 SQL 执行
 
-```
-Phase 1 (项目初始化)
-    ↓
-Phase 2 (基础设施) → Phase 3 (Skills)
-    ↓                   ↓
-Phase 4 (核心业务) ← Phase 3
-    ↓
-Phase 5 (前端开发)
-    ↓
-Phase 6 (高级功能)
-    ↓
-Phase 7 (优化完善)
-```
+- [x] 执行数据库查询
+- [x] 展示结果表格
+- [x] 返回错误信息
 
----
+### 6.3 前端工作台
 
-## 关键里程碑
+- [x] 实现 SQL 工作台页面
+- [x] 支持生成、执行、查看结果
+- [x] 支持查看生成历史
 
-| 里程碑 | 内容 | 目标 |
-|-------|-----|-----|
-| M1 | 基础项目 + 数据库连接 | 完成基础架子 |
-| M2 | 表分析 + NL2SQL | 核心功能可用 |
-| M3 | AI问答 + 记忆 | 智能对话可用 |
-| M4 | 可视化报表 | 完整分析流程 |
-| M5 | 高级功能 | 完整版发布 |
+## Phase 7：报表中心
+
+### 7.1 图表报表
+
+- [x] 设计报表数据表
+- [x] 支持保存图表配置
+- [x] 支持展示图表报表
+- [x] 支持图表导出 PDF
+
+### 7.2 文档报告
+
+- [x] 支持生成 Markdown 文档报告
+- [x] 支持保存到报表中心
+- [x] 支持文档报告下载 PDF
+
+### 7.3 报表页面
+
+- [x] 实现报表中心页面
+- [x] 支持查看图表与文档两类报表
+- [x] 支持删除、下载等操作
+
+## Phase 8：知识库 V1
+
+### 8.1 文档管理
+
+- [x] 设计知识库文档表与分块表
+- [x] 实现文档上传接口
+- [x] 实现文档删除接口
+- [x] 实现文档重建索引接口
+- [x] 实现文档下载接口
+
+### 8.2 文档处理
+
+- [x] 支持 `PDF` 读取
+- [x] 支持 `TXT` 读取
+- [x] 支持 `Markdown` 读取
+- [x] 支持 `DOCX` 读取
+- [x] 实现统一切块
+- [x] 实现向量化存储
+
+### 8.3 检索与预览
+
+- [x] 实现知识库搜索
+- [x] 实现引用结果返回
+- [x] 实现文档片段预览
+- [x] 实现片段定位跳转
+
+### 8.4 前端知识库页面
+
+- [x] 实现知识库主页
+- [x] 实现上传 loading 状态
+- [x] 实现搜索交互
+- [x] 实现文档列表
+- [x] 实现预览弹窗
+
+## Phase 9：执行链路
+
+### 9.1 后端链路模型
+
+- [x] 设计 `workflow_runs`
+- [x] 设计 `workflow_steps`
+- [x] 设计 `workflow_timeline`
+- [x] 实现运行记录写入
+- [x] 实现步骤记录写入
+- [x] 实现时间线记录写入
+
+### 9.2 场景接入
+
+- [x] 接入问答场景
+- [x] 接入 SQL 场景
+- [x] 接入报表场景
+- [x] 接入表分析场景
+
+### 9.3 前端页面
+
+- [x] 实现执行链路页面
+- [x] 展示运行记录
+- [x] 展示步骤列表
+- [x] 展示时间线信息
+
+## Phase 10：系统设置
+
+### 10.1 配置模型
+
+- [x] 设计应用配置表
+- [x] 支持语言模型配置
+- [x] 支持向量模型配置
+- [x] 支持温度参数配置
+
+### 10.2 前端设置页
+
+- [x] 实现设置页面
+- [x] 支持模型参数编辑
+- [x] 支持配置保存
+
+## Phase 11：前端整体体验
+
+### 11.1 页面与布局
+
+- [x] 完成主导航布局
+- [x] 完成页面路由组织
+- [x] 统一页面风格
+- [x] 优化页面信息密度
+
+### 11.2 关键交互优化
+
+- [x] 优化智能问答页面布局
+- [x] 优化知识库页面交互
+- [x] 优化报表中心页面样式
+- [x] 优化左侧导航固定与选中效果
+- [x] 优化消息流式切换显示
+
+## Phase 12：测试与验收
+
+### 12.1 后端测试
+
+- [ ] 补充核心服务单元测试
+- [ ] 补充知识库集成测试
+- [ ] 补充报表链路集成测试
+- [ ] 补充 Agent 与 MCP Tool 集成测试
+
+### 12.2 前端测试
+
+- [ ] 补充关键页面交互测试
+- [ ] 补充问答流式场景测试
+- [ ] 补充知识库预览与搜索测试
+
+### 12.3 验收与回归
+
+- [ ] 完成启动链路验收
+- [ ] 完成数据库分析主流程验收
+- [ ] 完成知识库主流程验收
+- [ ] 完成报表中心主流程验收
+- [ ] 完成执行链路页面验收
