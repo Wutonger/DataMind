@@ -43,13 +43,13 @@ defineEmits<{
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
 }
 
 .editor-toolbar {
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
-  background: rgba(250, 246, 243, 0.92);
+  background: var(--background-muted);
   display: flex;
   justify-content: flex-end;
 }
@@ -62,7 +62,7 @@ defineEmits<{
   --n-color: transparent !important;
   --n-color-focus: transparent !important;
   --n-text-color: var(--text-color) !important;
-  --n-placeholder-color: rgba(149, 113, 91, 0.5) !important;
+  --n-placeholder-color: var(--text-muted) !important;
 }
 
 .sql-editor-wrapper :deep(.n-input__textarea-el),

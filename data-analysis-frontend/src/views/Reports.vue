@@ -723,7 +723,7 @@ onMounted(() => {
 .report-stat-card {
   padding: 16px 18px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-muted);
   border: 1px solid var(--line-soft);
 }
 
@@ -756,19 +756,19 @@ onMounted(() => {
 
 .report-toolbar-main :deep(.n-input),
 .report-toolbar-main :deep(.n-base-selection) {
-  --n-border-radius: 8px !important;
-  border-radius: 8px;
+  --n-border-radius: 12px !important;
+  border-radius: 12px;
 }
 
 .report-table-shell {
   overflow: hidden;
   border-radius: 16px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
 }
 
 .report-table-shell :deep(.n-data-table-th) {
-  background: rgba(250, 250, 250, 0.96);
+  background: var(--surface-table-head);
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -782,7 +782,7 @@ onMounted(() => {
 }
 
 .report-table-shell :deep(.n-data-table-tr:hover .n-data-table-td) {
-  background: rgba(115, 77, 57, 0.04);
+  background: var(--surface-hover);
 }
 
 .report-pagination {

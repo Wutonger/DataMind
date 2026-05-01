@@ -165,14 +165,14 @@ const openCitation = (citation: KnowledgeCitation) => {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(239, 91, 42, 0.08);
-  color: var(--primary-color);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 12px;
   font-weight: 800;
 }
 
 .chat-message.user .message-avatar {
-  background: rgba(214, 69, 80, 0.1);
+  background: var(--accent-soft);
   color: var(--accent-color);
 }
 
@@ -188,8 +188,8 @@ const openCitation = (citation: KnowledgeCitation) => {
   width: min(100%, 980px);
   padding: 14px;
   border-radius: 16px;
-  background: rgba(255, 248, 244, 0.9);
-  border: 1px solid rgba(239, 91, 42, 0.08);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-accent-soft);
 }
 
 .steps-header {
@@ -208,8 +208,8 @@ const openCitation = (citation: KnowledgeCitation) => {
 .steps-count {
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.08);
-  color: var(--primary-color);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 12px;
   font-weight: 700;
 }
@@ -227,7 +227,7 @@ const openCitation = (citation: KnowledgeCitation) => {
   min-height: 40px;
   padding: 0 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--background-elevated);
   border: 1px solid var(--line-soft);
 }
 
@@ -263,8 +263,8 @@ const openCitation = (citation: KnowledgeCitation) => {
   min-width: 26px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.08);
-  color: var(--primary-color);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 11px;
   font-weight: 700;
   text-align: center;
@@ -278,34 +278,34 @@ const openCitation = (citation: KnowledgeCitation) => {
   width: min(100%, 980px);
   padding: 18px 20px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
   border: 1px solid var(--line-soft);
 }
 
 .chat-message.user .message-bubble {
   width: min(82%, 760px);
-  background: rgba(255, 246, 241, 0.98);
-  border-color: rgba(239, 91, 42, 0.14);
+  background: var(--surface-subtle);
+  border-color: var(--border-accent-soft);
 }
 
 .chat-message.user .message-bubble :deep(code) {
-  background: rgba(239, 91, 42, 0.08);
-  color: #8d3e22;
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
 }
 
 .chat-message.user .message-bubble :deep(blockquote) {
-  border-left-color: rgba(239, 91, 42, 0.36);
-  background: rgba(239, 91, 42, 0.06);
+  border-left-color: var(--border-accent-strong);
+  background: var(--surface-active);
 }
 
 .chat-message.user .message-bubble :deep(a) {
-  color: #cc4a20;
+  color: var(--primary-color-strong);
 }
 
 .message-sources {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid rgba(212, 167, 134, 0.2);
+  border-top: 1px solid var(--line-soft);
 }
 
 .sources-label {
@@ -331,11 +331,11 @@ const openCitation = (citation: KnowledgeCitation) => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #c34b23;
+  color: var(--primary-color-strong);
   font-size: 13px;
   line-height: 1.6;
   text-decoration: underline;
-  text-decoration-color: rgba(195, 75, 35, 0.28);
+  text-decoration-color: var(--border-accent-strong);
   cursor: pointer;
   text-underline-offset: 3px;
   transition:
@@ -344,7 +344,7 @@ const openCitation = (citation: KnowledgeCitation) => {
 }
 
 .source-link:hover {
-  color: #a93f1d;
+  color: var(--primary-color);
   text-decoration-color: currentColor;
 }
 

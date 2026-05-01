@@ -65,7 +65,7 @@ const formatCell = (value: unknown) => {
   max-height: 500px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
 }
 
 .result-table {
@@ -80,7 +80,7 @@ const formatCell = (value: unknown) => {
   top: 0;
   z-index: 1;
   padding: 13px 16px;
-  background: rgba(250, 250, 250, 0.96);
+  background: var(--surface-table-head);
   text-align: left;
   color: var(--text-muted);
   font-size: 12px;
@@ -97,17 +97,17 @@ const formatCell = (value: unknown) => {
 }
 
 .result-table tr:nth-child(even) td {
-  background: rgba(250, 250, 250, 0.55);
+  background: var(--background-muted);
 }
 
 .result-table tr:hover td {
-  background: rgba(115, 77, 57, 0.04);
+  background: var(--surface-hover);
 }
 
 .result-error {
   padding: 20px;
-  background: rgba(200, 85, 71, 0.08);
-  border: 1px solid rgba(200, 85, 71, 0.16);
+  background: var(--surface-danger);
+  border: 1px solid var(--border-danger-soft);
   border-radius: 18px;
   color: var(--error-color);
 }
@@ -117,6 +117,6 @@ const formatCell = (value: unknown) => {
   text-align: center;
   color: var(--text-secondary);
   border-radius: 18px;
-  background: rgba(255, 248, 246, 0.92);
+  background: var(--surface-subtle);
 }
 </style>

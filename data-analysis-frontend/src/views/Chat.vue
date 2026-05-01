@@ -866,7 +866,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
   border: 1px solid var(--line-soft);
   box-shadow: var(--card-shadow);
 }
@@ -897,7 +897,7 @@ onMounted(() => {
 
 .chat-empty-intro {
   margin: 0;
-  color: rgba(146, 92, 58, 0.9);
+  color: var(--text-secondary);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -916,16 +916,16 @@ onMounted(() => {
   min-height: 34px;
   padding: 0 14px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.07);
-  border: 1px solid rgba(239, 91, 42, 0.1);
-  color: rgba(126, 77, 49, 0.88);
+  background: var(--surface-active);
+  border: 1px solid var(--border-accent-soft);
+  color: var(--primary-color-strong);
   font-size: 13px;
   font-weight: 500;
 }
 
 .chat-composer {
   padding: 16px 22px 22px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
   border-top: 1px solid var(--line-soft);
 }
 
@@ -938,14 +938,14 @@ onMounted(() => {
 }
 
 .composer-textarea :deep(.n-input) {
-  --n-color: rgba(255, 255, 255, 0.98) !important;
+  --n-color: var(--background-elevated) !important;
   --n-color-focus: rgba(255, 255, 255, 1) !important;
-  --n-color-disabled: rgba(255, 250, 247, 0.96) !important;
+  --n-color-disabled: var(--surface-disabled) !important;
   --n-text-color: var(--text-color) !important;
-  --n-placeholder-color: rgba(161, 132, 115, 0.72) !important;
+  --n-placeholder-color: var(--text-muted) !important;
   --n-border: 1px solid var(--line-strong) !important;
-  --n-border-focus: 1px solid rgba(239, 91, 42, 0.28) !important;
-  --n-border-hover: 1px solid rgba(239, 91, 42, 0.2) !important;
+  --n-border-focus: 1px solid var(--border-accent-strong) !important;
+  --n-border-hover: 1px solid var(--border-accent) !important;
   --n-box-shadow-focus: none !important;
   border-radius: 16px !important;
 }
@@ -985,7 +985,7 @@ onMounted(() => {
   gap: 14px;
   padding: 40px 24px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
   border: 1px solid var(--line-soft);
   box-shadow: var(--card-shadow);
 }
@@ -1027,7 +1027,7 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 12px;
   color: var(--error-color);
-  background: rgba(200, 85, 71, 0.08);
+  background: var(--surface-danger);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -1036,7 +1036,7 @@ onMounted(() => {
   padding: 40px 18px;
   border-radius: 16px;
   border: 1px dashed var(--line-strong);
-  background: rgba(255, 250, 247, 0.9);
+  background: var(--surface-subtle);
   color: var(--text-secondary);
   text-align: center;
 }
@@ -1088,7 +1088,7 @@ onMounted(() => {
   padding: 10px 12px;
   border: 1px solid var(--line-soft);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-muted);
   text-align: left;
   cursor: pointer;
   transition:
@@ -1099,8 +1099,8 @@ onMounted(() => {
 
 .chunk-nav-item:hover,
 .chunk-nav-item.active {
-  border-color: rgba(239, 91, 42, 0.18);
-  background: rgba(255, 247, 241, 0.96);
+  border-color: var(--border-accent);
+  background: var(--surface-subtle);
 }
 
 .chunk-nav-item strong {
@@ -1129,7 +1129,7 @@ onMounted(() => {
   padding: 18px;
   border-radius: 16px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-muted);
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.9;

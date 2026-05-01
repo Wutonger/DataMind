@@ -874,11 +874,11 @@ onMounted(() => {
     startOnLoad: true,
     theme: 'base',
     themeVariables: {
-      primaryColor: '#fff5ef',
+      primaryColor: '#ffffff',
       primaryTextColor: '#3f3129',
       primaryBorderColor: '#ef5b2a',
-      lineColor: '#d97a56',
-      tertiaryColor: '#ffffff'
+      lineColor: '#c97956',
+      tertiaryColor: '#faf8f6'
     },
     er: {
       diagramPadding: 20,
@@ -912,7 +912,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-overlay);
   backdrop-filter: blur(6px);
   z-index: 20;
 }
@@ -922,9 +922,9 @@ onBeforeUnmount(() => {
   max-width: 420px;
   padding: 24px 28px;
   border-radius: 22px;
-  border: 1px solid rgba(239, 91, 42, 0.16);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 22px 60px rgba(142, 79, 44, 0.14);
+  border: 1px solid var(--border-accent-soft);
+  background: var(--surface-overlay-strong);
+  box-shadow: var(--shadow-floating);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -933,7 +933,7 @@ onBeforeUnmount(() => {
 }
 
 .analysis-scan-title {
-  color: var(--text-primary);
+  color: var(--text-color);
   font-size: 14px;
   font-weight: 600;
 }
@@ -966,7 +966,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: 18px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
 }
 
 .chart-controls {

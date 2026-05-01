@@ -5,7 +5,7 @@
         <section class="sql-side-section">
           <div class="sql-panel-heading">
             <div>
-              <div class="sql-panel-kicker">SQL Studio</div>
+              <div class="sql-panel-kicker">SQL 工作台</div>
               <h3>自然语言转查询</h3>
             </div>
             <span class="sql-connection-badge">{{ appStore.currentConnectionName || '当前连接' }}</span>
@@ -31,7 +31,7 @@
 
         <section class="sql-side-section sql-history-section">
           <div class="sql-subhead">
-            <h4>最近查询</h4>
+            <h4>生成历史</h4>
             <span>{{ sqlHistory.length }} 条</span>
           </div>
 
@@ -454,22 +454,22 @@ watch(
   flex: 0 0 auto;
   padding: 6px 11px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.08);
-  color: rgba(126, 77, 49, 0.88);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .sql-intent-input :deep(.n-input) {
-  --n-color: rgba(255, 255, 255, 0.98) !important;
-  --n-color-focus: rgba(255, 255, 255, 1) !important;
-  --n-color-disabled: rgba(255, 250, 247, 0.96) !important;
+  --n-color: var(--background-elevated) !important;
+  --n-color-focus: var(--background-strong) !important;
+  --n-color-disabled: var(--surface-disabled) !important;
   --n-text-color: var(--text-color) !important;
-  --n-placeholder-color: rgba(149, 113, 91, 0.62) !important;
+  --n-placeholder-color: var(--text-muted) !important;
   --n-border: 1px solid var(--line-soft) !important;
-  --n-border-hover: 1px solid rgba(239, 91, 42, 0.14) !important;
-  --n-border-focus: 1px solid rgba(239, 91, 42, 0.2) !important;
+  --n-border-hover: 1px solid var(--border-accent-soft) !important;
+  --n-border-focus: 1px solid var(--border-accent) !important;
   --n-box-shadow-focus: none !important;
   border-radius: 16px !important;
 }
@@ -516,18 +516,6 @@ watch(
   font-size: 19px;
 }
 
-.sql-history-section .sql-subhead h4 {
-  position: relative;
-  color: transparent;
-}
-
-.sql-history-section .sql-subhead h4::after {
-  content: '\751f\6210\5386\53f2';
-  position: absolute;
-  inset: 0;
-  color: var(--text-color);
-}
-
 .sql-subhead span {
   color: var(--text-secondary);
   font-size: 12px;
@@ -553,7 +541,7 @@ watch(
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid transparent;
-  background: rgba(255, 250, 247, 0.92);
+  background: var(--background-muted);
   text-align: left;
   cursor: pointer;
   transition:
@@ -563,14 +551,14 @@ watch(
 }
 
 .history-item:hover {
-  border-color: rgba(239, 91, 42, 0.12);
-  background: rgba(255, 255, 255, 0.98);
+  border-color: var(--border-accent-soft);
+  background: var(--background-elevated);
   transform: translateY(-1px);
 }
 
 .history-item.active {
-  border-color: rgba(239, 91, 42, 0.18);
-  background: rgba(239, 91, 42, 0.06);
+  border-color: var(--border-accent);
+  background: var(--surface-active);
 }
 
 .history-sql {
@@ -591,7 +579,7 @@ watch(
 .sql-history-empty {
   padding: 28px 16px;
   border-radius: 16px;
-  background: rgba(255, 248, 246, 0.9);
+  background: var(--surface-subtle);
   color: var(--text-secondary);
   text-align: center;
 }

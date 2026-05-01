@@ -26,7 +26,7 @@
         <n-input
           v-model:value="keyword"
           clearable
-          placeholder="搜索名称或 WF ID"
+          placeholder="搜索名称或执行 ID"
           class="workflow-search"
         />
         <n-select
@@ -94,7 +94,7 @@
             <strong>{{ selectedRun.title || '未命名运行' }}</strong>
           </div>
           <div class="workflow-detail-fact workflow-detail-id">
-            <span>WF ID</span>
+            <span>执行 ID</span>
             <strong>{{ selectedRun.id }}</strong>
           </div>
           <div class="workflow-detail-fact">
@@ -311,7 +311,7 @@ const columns: DataTableColumns<WorkflowRun> = [
       h('span', { class: 'workflow-run-name' }, run.title || '未命名运行')
   },
   {
-    title: 'WF ID',
+    title: '执行 ID',
     key: 'id',
     minWidth: 240,
     render: (run) => h('span', { class: 'workflow-id-cell' }, run.id)
@@ -598,7 +598,7 @@ watch(
   padding: 4px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--background-strong);
+  background: var(--background-muted);
 }
 
 .workflow-scene-tab {
@@ -618,13 +618,13 @@ watch(
 
 .workflow-scene-tab:hover {
   color: var(--text-color);
-  background: rgba(115, 77, 57, 0.05);
+  background: var(--surface-hover);
 }
 
 .workflow-scene-tab.active {
-  color: var(--primary-color);
-  background: var(--background-strong);
-  box-shadow: 0 8px 18px rgba(122, 65, 35, 0.08);
+  color: var(--primary-color-strong);
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--border-accent-soft);
 }
 
 .workflow-list-toolbar {
@@ -648,19 +648,19 @@ watch(
 
 .workflow-list-toolbar :deep(.n-input),
 .workflow-list-toolbar :deep(.n-base-selection) {
-  --n-border-radius: 8px !important;
-  border-radius: 8px;
+  --n-border-radius: 12px !important;
+  border-radius: 12px;
 }
 
 .workflow-table-shell {
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--workflow-surface);
+  background: var(--background-elevated);
 }
 
 .workflow-table-shell :deep(.n-data-table-th) {
-  background: rgba(250, 250, 250, 0.96);
+  background: var(--surface-table-head);
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -678,7 +678,7 @@ watch(
 }
 
 .workflow-table-shell :deep(.workflow-table-row:hover .n-data-table-td) {
-  background: rgba(115, 77, 57, 0.04);
+  background: var(--surface-hover);
 }
 
 .workflow-run-name {
@@ -754,7 +754,7 @@ watch(
   padding: 14px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--workflow-surface);
+  background: var(--background-elevated);
 }
 
 .workflow-detail-fact span {
@@ -799,13 +799,13 @@ watch(
   padding: 14px 16px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--workflow-surface);
+  background: var(--background-elevated);
   text-align: left;
 }
 
 .workflow-step-card.failed {
-  border-color: rgba(200, 85, 71, 0.3);
-  background: rgba(200, 85, 71, 0.06);
+  border-color: var(--border-danger-soft);
+  background: var(--surface-danger);
 }
 
 .workflow-step-index {
@@ -815,8 +815,8 @@ watch(
   width: 32px;
   height: 32px;
   border-radius: 12px;
-  background: var(--primary-color-soft);
-  color: var(--primary-color);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 13px;
   font-weight: 600;
 }

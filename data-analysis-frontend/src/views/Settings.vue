@@ -10,15 +10,15 @@
       <div class="settings-layout">
         <div class="settings-card">
           <div class="settings-card-head">
-            <span class="settings-card-kicker">Access</span>
+            <span class="settings-card-kicker">接入</span>
             <h4>接入配置</h4>
           </div>
 
           <n-form :model="aiConfig" label-placement="top" class="settings-form-grid">
-            <n-form-item label="Provider">
+            <n-form-item label="服务商">
               <n-input v-model:value="aiConfig.provider" placeholder="openai" />
             </n-form-item>
-            <n-form-item label="Base URL">
+            <n-form-item label="接口地址">
               <n-input v-model:value="aiConfig.baseUrl" placeholder="https://api.openai.com/v1" />
             </n-form-item>
             <n-form-item label="API Key" class="settings-span-2">
@@ -35,7 +35,7 @@
         <div class="settings-model-grid">
           <div class="settings-card">
             <div class="settings-card-head">
-              <span class="settings-card-kicker">LLM</span>
+              <span class="settings-card-kicker">语言模型</span>
               <h4>语言模型</h4>
             </div>
 
@@ -43,7 +43,7 @@
               <n-form-item label="模型">
                 <n-input v-model:value="aiConfig.model" placeholder="例如：gpt-4o" />
               </n-form-item>
-              <n-form-item label="Temperature">
+              <n-form-item label="温度">
                 <div class="settings-stepper">
                   <n-button
                     class="settings-stepper-button"
@@ -76,7 +76,7 @@
 
           <div class="settings-card">
             <div class="settings-card-head">
-              <span class="settings-card-kicker">Embedding</span>
+              <span class="settings-card-kicker">向量模型</span>
               <h4>向量模型</h4>
             </div>
 
@@ -186,7 +186,7 @@ onMounted(() => {
   padding: 24px;
   border: 1px solid var(--line-soft);
   border-radius: 22px;
-  background: #ffffff;
+  background: var(--background-elevated);
 }
 
 .settings-card-head {
@@ -203,8 +203,8 @@ onMounted(() => {
   padding: 0 10px;
   height: 24px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.08);
-  color: #b4542d;
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;

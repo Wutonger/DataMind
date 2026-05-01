@@ -123,28 +123,28 @@ const themeOverrides: GlobalThemeOverrides = {
   },
   Menu: {
     color: 'transparent',
-    itemColorHover: 'rgba(239, 91, 42, 0.06)',
-    itemColorActive: 'rgba(239, 91, 42, 0.12)',
-    itemColorActiveHover: 'rgba(239, 91, 42, 0.16)',
+    itemColorHover: 'rgba(239, 91, 42, 0.05)',
+    itemColorActive: 'rgba(239, 91, 42, 0.09)',
+    itemColorActiveHover: 'rgba(239, 91, 42, 0.13)',
     itemTextColor: '#6e5548',
     itemTextColorHover: '#3f3129',
-    itemTextColorActive: '#3f3129',
-    itemTextColorActiveHover: '#3f3129',
-    itemTextColorChildActive: '#3f3129',
-    itemTextColorChildActiveHover: '#3f3129',
+    itemTextColorActive: '#b4542d',
+    itemTextColorActiveHover: '#b4542d',
+    itemTextColorChildActive: '#b4542d',
+    itemTextColorChildActiveHover: '#b4542d',
     itemIconColor: '#b47a62',
-    itemIconColorHover: '#ef5b2a',
-    itemIconColorActive: '#ef5b2a',
-    itemIconColorActiveHover: '#ef5b2a',
-    itemIconColorChildActive: '#ef5b2a',
-    itemIconColorChildActiveHover: '#ef5b2a'
+    itemIconColorHover: '#b4542d',
+    itemIconColorActive: '#b4542d',
+    itemIconColorActiveHover: '#b4542d',
+    itemIconColorChildActive: '#b4542d',
+    itemIconColorChildActiveHover: '#b4542d'
   },
   Tabs: {
-    colorSegment: 'rgba(239, 91, 42, 0.08)',
-    tabColorSegment: '#ef5b2a',
+    colorSegment: '#fff7f2',
+    tabColorSegment: 'rgba(239, 91, 42, 0.12)',
     tabTextColorSegment: '#8f6b5a',
-    tabTextColorHoverSegment: '#ef5b2a',
-    tabTextColorActiveSegment: '#fff8f4',
+    tabTextColorHoverSegment: '#b4542d',
+    tabTextColorActiveSegment: '#b4542d',
     barColor: '#ef5b2a',
     tabTextColorActiveLine: '#ef5b2a',
     tabTextColorHoverLine: '#ef5b2a',
@@ -214,9 +214,9 @@ const handleMenuSelect = (key: string) => {
   max-height: calc(100vh - 32px);
   padding: 22px 16px 16px;
   border-radius: 24px;
-  background: #ffffff;
-  border: 1px solid rgba(115, 77, 57, 0.12);
-  box-shadow: 0 12px 30px rgba(122, 65, 35, 0.08);
+  background: var(--background-elevated);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--card-shadow);
   overflow: auto;
   scrollbar-gutter: stable;
 }
@@ -236,7 +236,7 @@ const handleMenuSelect = (key: string) => {
 
 .brand-copy h1 {
   margin: 0;
-  color: #3f3129;
+  color: var(--text-color);
   font-family: var(--font-display);
   font-size: 28px;
   letter-spacing: -0.05em;
@@ -245,7 +245,7 @@ const handleMenuSelect = (key: string) => {
 .sidebar-section-label {
   margin: 6px 0 10px;
   padding-left: 10px;
-  color: #b47a62;
+  color: var(--text-muted);
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -310,25 +310,25 @@ const handleMenuSelect = (key: string) => {
 }
 
 .sidebar-panel :deep(.n-menu-item-content:hover) {
-  background: rgba(239, 91, 42, 0.06);
+  background: var(--surface-hover);
 }
 
 .sidebar-panel :deep(.n-menu-item-content:hover .n-menu-item-content-header),
 .sidebar-panel :deep(.n-menu-item-content:hover .n-menu-item-content__icon) {
-  color: #ef5b2a;
+  color: var(--primary-color-strong);
 }
 
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected) {
-  background: rgba(239, 91, 42, 0.12);
+  background: var(--surface-active);
 }
 
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected:hover) {
-  background: rgba(239, 91, 42, 0.16);
+  background: var(--surface-active-strong);
 }
 
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header),
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon) {
-  color: #3f3129;
+  color: var(--primary-color-strong);
 }
 
 @media (max-width: 920px) {

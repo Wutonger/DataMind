@@ -2,7 +2,7 @@
   <div class="workspace-page dashboard-page">
     <section class="page-section dashboard-hero">
       <div class="dashboard-hero-copy">
-        <div class="dashboard-kicker">Workspace Snapshot</div>
+        <div class="dashboard-kicker">数据概览</div>
         <h3 class="dashboard-title">工作区概览</h3>
         <p class="dashboard-subtitle">
           {{ dashboardSubtitle }}
@@ -443,7 +443,7 @@ onMounted(() => {
   padding: 14px 16px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
   cursor: pointer;
   text-align: left;
   transition:
@@ -454,8 +454,8 @@ onMounted(() => {
 
 .dashboard-session-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(239, 91, 42, 0.18);
-  background: rgba(255, 248, 244, 0.78);
+  border-color: var(--border-accent);
+  background: var(--surface-hover);
 }
 
 .dashboard-session-main {
@@ -516,8 +516,8 @@ onMounted(() => {
 .dashboard-connection-status {
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(239, 91, 42, 0.08);
-  color: var(--primary-color);
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -532,8 +532,8 @@ onMounted(() => {
 .dashboard-connection-fact {
   padding: 14px 14px 12px;
   border-radius: 14px;
-  background: rgba(255, 248, 244, 0.72);
-  border: 1px solid rgba(239, 91, 42, 0.08);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-accent-soft);
 }
 
 .dashboard-connection-fact span {

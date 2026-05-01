@@ -1,6 +1,6 @@
 <template>
   <div class="card connection-card" :class="{ selected: selected }" @click="$emit('select', connection)">
-    <span v-if="selected" class="active-badge">Active</span>
+    <span v-if="selected" class="active-badge">当前连接</span>
 
     <div class="card-header">
       <h3>{{ connection.name }}</h3>

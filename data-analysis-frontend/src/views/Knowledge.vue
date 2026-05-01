@@ -758,7 +758,7 @@ onMounted(() => {
   justify-content: center;
   gap: 10px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-overlay);
   backdrop-filter: blur(3px);
 }
 
@@ -776,7 +776,7 @@ onMounted(() => {
 .knowledge-stat {
   padding: 16px 18px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-muted);
   border: 1px solid var(--line-soft);
 }
 
@@ -803,8 +803,8 @@ onMounted(() => {
 }
 
 .knowledge-search-bar :deep(.n-input) {
-  --n-border-radius: 8px !important;
-  border-radius: 8px;
+  --n-border-radius: 12px !important;
+  border-radius: 12px;
 }
 
 .knowledge-preview-meta {
@@ -822,7 +822,7 @@ onMounted(() => {
   overflow: hidden;
   border-radius: 16px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--background-elevated);
 }
 
 .detail-surface {
@@ -831,7 +831,7 @@ onMounted(() => {
 }
 
 .knowledge-table-shell :deep(.n-data-table-th) {
-  background: rgba(250, 250, 250, 0.96);
+  background: var(--surface-table-head);
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -845,11 +845,11 @@ onMounted(() => {
 }
 
 .knowledge-table-shell :deep(.n-data-table-tr:hover .n-data-table-td) {
-  background: rgba(115, 77, 57, 0.04);
+  background: var(--surface-hover);
 }
 
 .knowledge-table-shell :deep(.knowledge-row-selected td) {
-  background: rgba(115, 77, 57, 0.05) !important;
+  background: var(--surface-active) !important;
 }
 
 .table-name-cell {
@@ -880,7 +880,7 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 12px;
   color: var(--error-color);
-  background: rgba(200, 85, 71, 0.08);
+  background: var(--surface-danger);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -896,7 +896,7 @@ onMounted(() => {
   padding: 14px;
   border-radius: 14px;
   border: 1px solid var(--line-soft);
-  background: rgba(250, 250, 250, 0.78);
+  background: var(--surface-subtle);
   text-align: left;
   cursor: pointer;
 }
@@ -973,7 +973,7 @@ onMounted(() => {
   padding: 10px 12px;
   border: 1px solid var(--line-soft);
   border-radius: 12px;
-  background: rgba(250, 250, 250, 0.72);
+  background: var(--background-muted);
   text-align: left;
   cursor: pointer;
   transition:
@@ -983,8 +983,8 @@ onMounted(() => {
 
 .chunk-nav-item:hover,
 .chunk-nav-item.active {
-  border-color: rgba(239, 91, 42, 0.18);
-  background: rgba(255, 248, 244, 0.92);
+  border-color: var(--border-accent);
+  background: var(--surface-subtle);
 }
 
 .chunk-nav-item strong {
@@ -1013,7 +1013,7 @@ onMounted(() => {
   padding: 18px;
   border-radius: 16px;
   border: 1px solid var(--line-soft);
-  background: rgba(250, 250, 250, 0.88);
+  background: var(--background-muted);
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.9;
@@ -1024,7 +1024,7 @@ onMounted(() => {
   padding: 48px 18px;
   border-radius: 16px;
   border: 1px dashed var(--line-strong);
-  background: rgba(255, 250, 247, 0.9);
+  background: var(--surface-subtle);
   color: var(--text-secondary);
   text-align: center;
 }
