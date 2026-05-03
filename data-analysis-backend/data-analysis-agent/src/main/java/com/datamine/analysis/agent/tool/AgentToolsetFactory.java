@@ -1,5 +1,6 @@
 package com.datamine.analysis.agent.tool;
 
+import com.alibaba.cloud.ai.graph.agent.hook.skills.SkillsAgentHook;
 import com.datamine.analysis.mcp.client.McpClient;
 import com.datamine.analysis.skills.input.KnowledgeSearchInput;
 import com.datamine.analysis.skills.input.SaveChartReportInput;
@@ -10,7 +11,6 @@ import com.datamine.analysis.skills.tool.SaveMarkdownReportToolService;
 import com.datamine.analysis.skills.tool.ToolExecutionSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
@@ -22,9 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
+/**
+ * 统一负责 Agent 工具的构建、场景筛选与 skill hook 装配。
+ */
 @Component
 @RequiredArgsConstructor
-public class AgentToolCallbackFactory {
+public class AgentToolsetFactory {
 
     private final McpClient mcpClient;
     private final ObjectMapper objectMapper;
@@ -32,13 +35,37 @@ public class AgentToolCallbackFactory {
     private final KnowledgeSearchToolService knowledgeSearchToolService;
     private final SaveChartReportToolService saveChartReportToolService;
     private final SaveMarkdownReportToolService saveMarkdownReportToolService;
+    private final AgentSkillHookFactory agentSkillHookFactory;
+
+    public AgentToolset createChatToolset(Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(connectionId, userInput));
+    }
+
+    public AgentToolset createSqlToolset(Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(connectionId, userInput).stream()
+                .filter(callback -> {
+                    String toolName = callback.getToolDefinition().name();
+                    return isKnowledgeTool(toolName) || isSchemaTool(toolName);
+                })
+                .toList());
+    }
+
+    public AgentToolset createReportToolset(Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(connectionId, userInput).stream()
+                .filter(callback -> {
+                    String toolName = callback.getToolDefinition().name();
+                    return isKnowledgeTool(toolName)
+                            || isSchemaTool(toolName)
+                            || isDbExecuteTool(toolName)
+                            || isReportArtifactTool(toolName);
+                })
+                .toList());
+    }
 
     /**
-     * 统一组装 MCP 工具与项目内置 Tool，供 Agent 按需调用。
+     * 统一组装 MCP 工具与项目内置工具。
      */
-    public List<ToolCallback> buildCallbacks(Long connectionId,
-                                             String userInput,
-                                             ChatClient chatClient) {
+    private List<ToolCallback> buildAllCallbacks(Long connectionId, String userInput) {
         if (connectionId == null) {
             return List.of();
         }
@@ -58,6 +85,51 @@ public class AgentToolCallbackFactory {
         toolCallbacks.add(buildSaveChartReportTool(connectionId, userInput));
         toolCallbacks.add(buildSaveMarkdownReportTool(connectionId, userInput));
         return toolCallbacks;
+    }
+
+    private AgentToolset buildToolset(List<ToolCallback> sceneCallbacks) {
+        return new AgentToolset(
+                sceneCallbacks,
+                agentSkillHookFactory.resolveBaseTools(sceneCallbacks),
+                agentSkillHookFactory.buildHook(sceneCallbacks),
+                containsSchemaTool(sceneCallbacks),
+                containsReportArtifactTool(sceneCallbacks)
+        );
+    }
+
+    private boolean containsSchemaTool(List<ToolCallback> callbacks) {
+        return callbacks.stream().anyMatch(callback -> isSchemaTool(callback.getToolDefinition().name()));
+    }
+
+    private boolean containsReportArtifactTool(List<ToolCallback> callbacks) {
+        return callbacks.stream().anyMatch(callback -> isReportArtifactTool(callback.getToolDefinition().name()));
+    }
+
+    private boolean isKnowledgeTool(String toolName) {
+        return matches(toolName, "knowledge_search");
+    }
+
+    private boolean isSchemaTool(String toolName) {
+        String normalized = normalize(toolName);
+        return "db_get_schema".equals(normalized)
+                || "db_list_tables".equals(normalized)
+                || "db_get_columns".equals(normalized);
+    }
+
+    private boolean isDbExecuteTool(String toolName) {
+        return matches(toolName, "db_execute");
+    }
+
+    private boolean isReportArtifactTool(String toolName) {
+        return matches(toolName, "save_chart_report") || matches(toolName, "save_markdown_report");
+    }
+
+    private boolean matches(String toolName, String expected) {
+        return expected.equals(normalize(toolName));
+    }
+
+    private String normalize(String toolName) {
+        return ToolNameNormalizer.canonicalize(toolName);
     }
 
     private ToolCallback buildKnowledgeSearchTool(Long connectionId, String userInput) {
@@ -94,5 +166,24 @@ public class AgentToolCallbackFactory {
                 .description(SaveMarkdownReportToolService.TOOL_DESCRIPTION)
                 .inputType(SaveMarkdownReportInput.class)
                 .build();
+    }
+
+    /**
+     * 按场景整理后的工具集合。
+     */
+    public record AgentToolset(List<ToolCallback> sceneCallbacks,
+                               List<ToolCallback> baseCallbacks,
+                               SkillsAgentHook skillHook,
+                               boolean hasSchemaTools,
+                               boolean hasReportArtifactTools) {
+
+        public AgentToolset {
+            sceneCallbacks = List.copyOf(sceneCallbacks);
+            baseCallbacks = List.copyOf(baseCallbacks);
+        }
+
+        public boolean isEmpty() {
+            return sceneCallbacks.isEmpty();
+        }
     }
 }

@@ -221,6 +221,7 @@ const inputMessage = ref('')
 const loading = ref(false)
 const compressing = ref(false)
 const latestWorkflowRunId = ref('')
+const showIntermediateThinkingStep = ref(false)
 const chatContainer = ref<HTMLElement | null>(null)
 const showKnowledgePreviewModal = ref(false)
 const knowledgePreviewLoading = ref(false)
@@ -295,8 +296,8 @@ const countFinishedSteps = (steps: MergedAgentStep[]) =>
 
 const mergedCurrentSteps = computed(() => mergeAdjacentSteps(currentAssistantMsg.value?.steps))
 
-const showLoadingStep = computed(() => {
-  if (!currentAssistantMsg.value || !loading.value || currentAssistantMsg.value.content) {
+const legacyShowLoadingStep = computed(() => {
+  if (!currentAssistantMsg.value || !loading.value) {
     return false
   }
 
@@ -304,7 +305,19 @@ const showLoadingStep = computed(() => {
     return false
   }
 
+  // 只要当前仍在流式处理中，且暂时没有运行中的步骤，就补一个“正在思考”节点，
+  // 这样用户能看到模型正在决定下一步，而不是误以为流程停住了。
   return mergedCurrentSteps.value.every((step) => isStepFinished(step.status))
+})
+
+void legacyShowLoadingStep
+
+const showLoadingStep = computed(() => {
+  if (!currentAssistantMsg.value || !loading.value) {
+    return false
+  }
+
+  return showIntermediateThinkingStep.value
 })
 
 const toDisplayMessage = (
@@ -506,6 +519,7 @@ const initSession = () => {
   messages.value = []
   currentAssistantMsg.value = null
   latestWorkflowRunId.value = ''
+  showIntermediateThinkingStep.value = false
 }
 
 const openWorkflowPage = () => {
@@ -604,6 +618,7 @@ const finalizeAssistantMessage = () => {
   }
 
   currentAssistantMsg.value = null
+  showIntermediateThinkingStep.value = false
 }
 
 const bindSessionIdFromEvent = (event: AgentEvent) => {
@@ -651,6 +666,7 @@ const sendMessage = async () => {
     steps: [],
     citations: []
   }
+  showIntermediateThinkingStep.value = false
   scrollToBottom()
 
   try {
@@ -714,6 +730,7 @@ const handleAgentEvent = (event: AgentEvent) => {
       break
 
     case 'STEP_STARTED': {
+      showIntermediateThinkingStep.value = false
       const steps = currentAssistantMsg.value.steps || []
       const existing = steps.find((step) => step.id === event.data.stepId)
       const stepName =
@@ -749,6 +766,11 @@ const handleAgentEvent = (event: AgentEvent) => {
           step.result = event.data.result
         }
       })
+      showIntermediateThinkingStep.value = Boolean(
+        loading.value &&
+          currentAssistantMsg.value.steps?.length &&
+          currentAssistantMsg.value.steps.every((step) => isStepFinished(step.status))
+      )
       scrollToBottom()
       break
 
@@ -759,10 +781,16 @@ const handleAgentEvent = (event: AgentEvent) => {
           step.result = event.data.error
         }
       })
+      showIntermediateThinkingStep.value = Boolean(
+        loading.value &&
+          currentAssistantMsg.value.steps?.length &&
+          currentAssistantMsg.value.steps.every((step) => isStepFinished(step.status))
+      )
       scrollToBottom()
       break
 
     case 'THINKING':
+      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content += event.data.token || ''
       scrollToBottom()
       break
@@ -771,6 +799,7 @@ const handleAgentEvent = (event: AgentEvent) => {
 
     case 'FINAL_RESPONSE':
       bindSessionIdFromEvent(event)
+      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content = event.data.content || currentAssistantMsg.value.content || ''
       currentAssistantMsg.value.citations = event.data.citations || []
       if (event.data.workflowRunId || event.data.runId) {

@@ -73,12 +73,12 @@ type MenuMeta = {
 const menuItems: MenuMeta[] = [
   { key: 'Dashboard', label: '首页', icon: AnalyticsOutline },
   { key: 'Connections', label: '连接管理', icon: LinkOutline },
-  { key: 'Analysis', label: '表结构', icon: GitNetworkOutline },
-  { key: 'SqlStudio', label: 'SQL 工作台', icon: TerminalOutline },
   { key: 'Chat', label: '智能问答', icon: ChatbubbleEllipsesOutline },
-  { key: 'Workflow', label: '执行链路', icon: ShareSocialOutline },
+  { key: 'SqlStudio', label: 'SQL 工作台', icon: TerminalOutline },
   { key: 'Reports', label: '报表中心', icon: BarChartOutline },
+  { key: 'Analysis', label: '表结构', icon: GitNetworkOutline },
   { key: 'Knowledge', label: '知识库', icon: LibraryOutline },
+  { key: 'Workflow', label: '执行链路', icon: ShareSocialOutline },
   { key: 'Settings', label: '系统设置', icon: SettingsOutline }
 ]
 

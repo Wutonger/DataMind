@@ -35,7 +35,7 @@
           <div class="step-status-icon">
             <n-icon class="spin"><RefreshOutline /></n-icon>
           </div>
-          <span class="step-name loading-placeholder">正在整理答案</span>
+          <span class="step-name loading-placeholder">正在思考</span>
         </div>
       </div>
     </div>
@@ -43,10 +43,13 @@
     <div v-if="showMessageBubble" class="message-bubble markdown-body">
       <div v-if="formattedContent" v-html="formattedContent"></div>
 
-      <div v-else class="thinking-indicator">
-        <span class="dot"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
+      <div v-else class="thinking-indicator" aria-live="polite" aria-label="正在思考">
+        <span class="thinking-label">正在思考</span>
+        <span class="thinking-dots" aria-hidden="true">
+          <i></i>
+          <i></i>
+          <i></i>
+        </span>
       </div>
 
       <div v-if="showCitations" class="message-sources">
@@ -126,6 +129,7 @@ const showThinkingIndicator = computed(
 const showMessageBubble = computed(
   () => Boolean(formattedContent.value) || showThinkingIndicator.value || showCitations.value
 )
+
 const showCursor = computed(() => props.live && Boolean(props.msg.content))
 const showCitations = computed(
   () => props.msg.role !== 'user' && Array.isArray(props.msg.citations) && props.msg.citations.length > 0
@@ -364,26 +368,41 @@ const openCitation = (citation: KnowledgeCitation) => {
 }
 
 .thinking-indicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   min-height: 28px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary-color);
-  animation: bounce 1.4s infinite ease-in-out both;
+.thinking-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.dot:nth-child(1) {
-  animation-delay: -0.32s;
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.dot:nth-child(2) {
-  animation-delay: -0.16s;
+.thinking-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.35;
+  animation: thinkingPulse 1.2s ease-in-out infinite;
+}
+
+.thinking-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.thinking-dots i:nth-child(3) {
+  animation-delay: 0.28s;
 }
 
 @keyframes blink {
@@ -397,23 +416,25 @@ const openCitation = (citation: KnowledgeCitation) => {
   }
 }
 
-@keyframes bounce {
-  0%,
-  80%,
-  100% {
-    transform: scale(0);
-  }
-  40% {
-    transform: scale(1);
-  }
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes thinkingPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
   }
 }
 
