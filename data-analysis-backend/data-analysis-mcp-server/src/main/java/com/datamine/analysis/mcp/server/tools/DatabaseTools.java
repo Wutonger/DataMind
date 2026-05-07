@@ -12,22 +12,41 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.StatementCallback;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DatabaseTools {
+
+    private static final Set<String> READ_ONLY_SQL_KEYWORDS = Set.of(
+            "SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN");
+    /** 匹配sql前的块注释*/
+    private static final Pattern BLOCK_COMMENT_PATTERN = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
+
+    /** 匹配sql前的行注释*/
+    private static final Pattern LINE_COMMENT_PATTERN = Pattern.compile("(?m)^\\s*(--|#).*?$");
+
+
+    private static final Pattern FIRST_KEYWORD_PATTERN = Pattern.compile("^([A-Z]+)\\b");
+
+
+    private static final Pattern MUTATING_SQL_PATTERN = Pattern.compile("\\b(INSERT|UPDATE|DELETE|REPLACE|MERGE|ALTER|DROP|" +
+            "CREATE|TRUNCATE|GRANT|REVOKE|COMMIT|ROLLBACK|CALL|DO|HANDLER|LOAD|LOCK|UNLOCK|SET|USE|ANALYZE|OPTIMIZE|REPAIR|FLUSH|RESET|START|BEGIN)\\b");
+
+
+    private static final Pattern READ_ONLY_DENY_PATTERN = Pattern.compile("\\bFOR\\s+UPDATE\\b|\\bLOCK\\s+IN\\s+SHARE\\s+MODE\\b|\\bINTO\\s+OUTFILE\\b|\\bINTO\\s+DUMPFILE\\b");
 
     private final JdbcTemplate jdbcTemplate;
     private final Map<Long, HikariDataSource> dataSourceCache = new ConcurrentHashMap<>();
@@ -91,10 +110,16 @@ public class DatabaseTools {
         return sb.toString();
     }
 
-    @Tool(description = "Execute a SQL statement and return query results or affected rows.")
+    @Tool(description = "Execute one read-only SQL query and return result rows. Statements that modify schema or data are not allowed.")
     public Map<String, Object> dbExecute(
             @ToolParam(description = "Database connection id") Long connectionId,
             @ToolParam(description = "SQL statement") String sql) {
+        String validationError = validateReadOnlyQuery(sql);
+        if (validationError != null) {
+            log.warn("Rejected non-read-only SQL. connectionId={}, sql={}, reason={}", connectionId, sql, validationError);
+            return Map.of("error", true, "message", validationError);
+        }
+
         Map<String, Object> conn = getConnection(connectionId);
         JdbcTemplate jdbc = getJdbcTemplate(conn);
 
@@ -150,6 +175,60 @@ public class DatabaseTools {
                 "rows", rows,
                 "rowCount", rows.size()
         );
+    }
+
+    private String validateReadOnlyQuery(String sql) {
+        if (!StringUtils.hasText(sql)) {
+            return "SQL 不能为空，dbExecute 仅支持只读查询语句。";
+        }
+
+        String normalized = normalizeSqlForValidation(sql);
+        if (!StringUtils.hasText(normalized)) {
+            return "SQL 不能为空，dbExecute 仅支持只读查询语句。";
+        }
+
+        String[] statements = normalized.split(";");
+        int statementCount = 0;
+        String firstStatement = null;
+        for (String statement : statements) {
+            if (!StringUtils.hasText(statement)) {
+                continue;
+            }
+            statementCount++;
+            if (firstStatement == null) {
+                firstStatement = statement.trim();
+            }
+        }
+
+        if (statementCount != 1 || !StringUtils.hasText(firstStatement)) {
+            return "仅支持执行一条只读查询语句，不允许提交多条 SQL。";
+        }
+
+        var matcher = FIRST_KEYWORD_PATTERN.matcher(firstStatement);
+        if (!matcher.find()) {
+            return "不支持当前 SQL 类型。dbExecute 仅允许执行 SELECT、WITH、SHOW、DESCRIBE、DESC、EXPLAIN 等只读查询语句。";
+        }
+
+        String firstKeyword = matcher.group(1);
+        if (!READ_ONLY_SQL_KEYWORDS.contains(firstKeyword)) {
+            return "不支持执行 " + firstKeyword + " 语句。dbExecute 仅允许执行只读查询，禁止修改表结构或修改表数据。";
+        }
+
+        if (READ_ONLY_DENY_PATTERN.matcher(firstStatement).find()) {
+            return "仅支持纯只读查询，不允许使用 FOR UPDATE、LOCK IN SHARE MODE、INTO OUTFILE 等带锁或导出能力的语法。";
+        }
+
+        if ("WITH".equals(firstKeyword) && MUTATING_SQL_PATTERN.matcher(firstStatement).find()) {
+            return "WITH 语句中仅允许只读查询，不允许通过 CTE 修改表结构或表数据。";
+        }
+
+        return null;
+    }
+
+    private String normalizeSqlForValidation(String sql) {
+        String normalized = BLOCK_COMMENT_PATTERN.matcher(sql).replaceAll(" ");
+        normalized = LINE_COMMENT_PATTERN.matcher(normalized).replaceAll(" ");
+        return normalized.trim().toUpperCase();
     }
 
     /**
