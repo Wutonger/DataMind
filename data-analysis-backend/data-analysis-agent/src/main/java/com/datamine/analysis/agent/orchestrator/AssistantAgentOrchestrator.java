@@ -63,17 +63,15 @@ public class AssistantAgentOrchestrator {
     /**
      * 处理聊天场景的流式输出，并在结束时返回完整执行结果。
      */
-    public Flux<String> orchestrateStream(String sessionId,
+    public Flux<String> orchestrateStream(String conversationId,
                                           Long connectionId,
                                           String userInput,
                                           ChatClient chatClient,
                                           ChatMemory chatMemory,
                                           Consumer<ChatExecutionResult> completionCallback) {
-        String conversationId = StringUtils.hasText(sessionId) ? sessionId : String.valueOf(connectionId);
-
         return Flux.create(emitter -> {
-            List<Map<String, Object>> executedSteps = java.util.Collections.synchronizedList(new ArrayList<>());
-            List<KnowledgeCitationDTO> collectedCitations = java.util.Collections.synchronizedList(new ArrayList<>());
+            List<Map<String, Object>> executedSteps = Collections.synchronizedList(new ArrayList<>());
+            List<KnowledgeCitationDTO> collectedCitations = Collections.synchronizedList(new ArrayList<>());
             AtomicReference<OverAllState> latestState = new AtomicReference<>();
             StringBuilder responseBuilder = new StringBuilder();
             String workflowRunId = workflowRunTracker.startRun("chat", connectionId, summarizeTitle(userInput));
@@ -119,9 +117,7 @@ public class AssistantAgentOrchestrator {
 
                 RunnableConfig runnableConfig = RunnableConfig.builder()
                         .threadId(conversationId)
-                        .addStateUpdate(Map.of(
-                                ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId
-                        ))
+                        .addStateUpdate(Map.of(ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId))
                         .build();
 
                 log.info("Starting chat workflow. sessionId={}, connectionId={}", conversationId, connectionId);
