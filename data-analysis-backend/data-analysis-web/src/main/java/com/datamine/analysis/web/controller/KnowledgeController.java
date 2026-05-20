@@ -45,8 +45,7 @@ public class KnowledgeController {
             for (MultipartFile file : files) {
                 uploadFiles.add(toUploadFile(file));
             }
-            List<KnowledgeDocumentDTO> result = knowledgeBaseService.uploadDocuments(
-                    new KnowledgeUploadRequestDTO(connectionId, uploadFiles));
+            List<KnowledgeDocumentDTO> result = knowledgeBaseService.uploadDocuments(new KnowledgeUploadRequestDTO(connectionId, uploadFiles));
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
