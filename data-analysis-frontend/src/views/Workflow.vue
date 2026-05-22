@@ -587,19 +587,20 @@ watch(
 
 .workflow-scene-tabs {
   display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--background-muted);
+  background: var(--background-elevated);
+  overflow: hidden;
 }
 
 .workflow-scene-tab {
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 18px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   font-size: 13px;
@@ -610,6 +611,10 @@ watch(
     box-shadow 0.18s ease;
 }
 
+.workflow-scene-tab + .workflow-scene-tab {
+  border-left: 1px solid var(--line-soft);
+}
+
 .workflow-scene-tab:hover {
   color: var(--text-color);
   background: var(--surface-hover);
@@ -618,7 +623,8 @@ watch(
 .workflow-scene-tab.active {
   color: var(--primary-color-strong);
   background: var(--surface-active);
-  box-shadow: inset 0 0 0 1px var(--border-accent-soft);
+  border-left-color: transparent;
+  box-shadow: none;
 }
 
 .workflow-list-toolbar {

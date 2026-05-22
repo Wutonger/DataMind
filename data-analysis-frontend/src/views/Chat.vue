@@ -881,13 +881,16 @@ onMounted(() => {
 
 <style scoped>
 .chat-page {
+  display: flex;
+  flex-direction: column;
   margin: -10px;
-  min-height: calc(100vh - 144px);
+  min-height: calc(100% + 20px);
 }
 
 .chat-workspace,
 .chat-unbound-state {
-  min-height: inherit;
+  flex: 1;
+  min-height: 100%;
   border-radius: 22px;
 }
 
@@ -1179,7 +1182,7 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .chat-page {
-    min-height: calc(100vh - 132px);
+    min-height: calc(100% + 20px);
   }
 
   .chat-messages {

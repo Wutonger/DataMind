@@ -1,13 +1,19 @@
 <template>
   <div class="workspace-page dashboard-page">
     <section class="page-section dashboard-hero">
-      <div class="dashboard-hero-copy">
-        <div class="dashboard-kicker">数据概览</div>
-        <h3 class="dashboard-title">工作区概览</h3>
-        <p class="dashboard-subtitle">
-          {{ dashboardSubtitle }}
-        </p>
-      </div>
+        <div class="dashboard-hero-copy">
+          <h3 class="dashboard-title">工作区概览</h3>
+          <p class="dashboard-subtitle">
+            <template v-if="activeConnection">
+              当前正在使用
+              <span class="dashboard-connection-highlight">{{ activeConnection.name }}</span>
+              ，可以直接查看表分析、SQL 工作台和最近会话。
+            </template>
+            <template v-else>
+              {{ dashboardSubtitle }}
+            </template>
+          </p>
+        </div>
 
       <div class="dashboard-hero-actions">
         <n-button
@@ -190,10 +196,6 @@ const lastAnalyzedTime = computed(() => {
 })
 
 const dashboardSubtitle = computed(() => {
-  if (activeConnection.value) {
-    return `当前正在使用 ${activeConnection.value.name}，可以直接查看表分析、SQL 工作台和最近会话。`
-  }
-
   if (connections.value.length > 0) {
     return '你已经配置了数据连接，选择一个连接后，首页会显示表分析和报表统计。'
   }
@@ -345,16 +347,8 @@ onMounted(() => {
 .dashboard-hero-copy {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-}
-
-.dashboard-kicker {
-  color: var(--primary-color);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 
 .dashboard-title {
@@ -372,6 +366,12 @@ onMounted(() => {
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.8;
+}
+
+.dashboard-connection-highlight {
+  margin: 0 4px;
+  color: var(--primary-color);
+  font-weight: 700;
 }
 
 .dashboard-hero-actions {

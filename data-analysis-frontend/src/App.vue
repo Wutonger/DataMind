@@ -3,27 +3,42 @@
     <n-message-provider>
       <n-dialog-provider>
         <n-notification-provider>
-          <div class="app-shell">
-            <aside class="sidebar-panel">
-              <div class="brand-block">
-                <div class="brand-copy">
-                  <h1>DataMind</h1>
+          <div class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+            <aside class="sidebar-panel" :class="{ collapsed: sidebarCollapsed }">
+              <div class="sidebar-topbar">
+                <div class="brand-block" :class="{ collapsed: sidebarCollapsed }">
+                  <div class="brand-copy">
+                    <h1>{{ sidebarCollapsed ? 'DM' : 'DataMind' }}</h1>
+                  </div>
                 </div>
+
+                <n-button
+                  quaternary
+                  circle
+                  class="sidebar-toggle"
+                  :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'"
+                  @click="toggleSidebar"
+                >
+                  <template #icon>
+                    <n-icon :size="16">
+                      <component :is="sidebarCollapsed ? ChevronForwardOutline : ChevronBackOutline" />
+                    </n-icon>
+                  </template>
+                </n-button>
               </div>
 
-              <div class="sidebar-section-label">导航</div>
+              <div v-show="!sidebarCollapsed" class="sidebar-section-label">导航</div>
               <n-menu
                 v-model:value="activeKey"
+                :collapsed="sidebarCollapsed"
+                :collapsed-width="64"
+                :collapsed-icon-size="18"
                 :options="menuOptions"
                 @update:value="handleMenuSelect"
               />
             </aside>
 
             <main class="workspace-shell">
-              <header class="workspace-topbar">
-                <h2>{{ currentTitle }}</h2>
-              </header>
-
               <div class="workspace-body">
                 <router-view />
               </div>
@@ -36,11 +51,13 @@
 </template>
 
 <script setup lang="ts">
-import { Component, computed, h, onMounted, ref, watch } from 'vue'
+import { h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AnalyticsOutline,
   BarChartOutline,
+  ChevronBackOutline,
+  ChevronForwardOutline,
   ChatbubbleEllipsesOutline,
   GitNetworkOutline,
   LinkOutline,
@@ -57,6 +74,7 @@ import {
   NMessageProvider,
   NNotificationProvider
 } from 'naive-ui'
+import type { Component } from 'vue'
 import type { GlobalThemeOverrides, MenuOption } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 
@@ -82,20 +100,17 @@ const menuItems: MenuMeta[] = [
   { key: 'Settings', label: '系统设置', icon: SettingsOutline }
 ]
 
-const routeMetaMap = Object.fromEntries(menuItems.map((item) => [item.key, item]))
 const renderIcon = (icon: Component) => () => h(NIcon, { size: 18 }, { default: () => h(icon) })
 
 const savedKey = localStorage.getItem('activeMenuKey') || String(route.name || 'Dashboard')
 const activeKey = ref(savedKey)
+const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 
 const menuOptions: MenuOption[] = menuItems.map((item) => ({
   key: item.key,
   label: item.label,
   icon: renderIcon(item.icon)
 }))
-
-const currentMeta = computed(() => routeMetaMap[String(route.name)] || menuItems[0])
-const currentTitle = computed(() => currentMeta.value.label)
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -175,6 +190,10 @@ watch(activeKey, (newVal) => {
   localStorage.setItem('activeMenuKey', newVal)
 })
 
+watch(sidebarCollapsed, (value) => {
+  localStorage.setItem('sidebarCollapsed', String(value))
+})
+
 watch(
   () => route.name,
   (newVal) => {
@@ -191,17 +210,26 @@ onMounted(() => {
 const handleMenuSelect = (key: string) => {
   router.push({ name: key })
 }
+
+const toggleSidebar = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
 </script>
 
 <style scoped>
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   align-items: start;
   height: 100vh;
   min-height: 100vh;
   gap: 16px;
   padding: 16px;
+  transition: grid-template-columns 0.22s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 92px minmax(0, 1fr);
 }
 
 .sidebar-panel {
@@ -219,18 +247,44 @@ const handleMenuSelect = (key: string) => {
   box-shadow: var(--card-shadow);
   overflow: auto;
   scrollbar-gutter: stable;
+  transition:
+    padding 0.22s ease,
+    border-radius 0.22s ease;
+}
+
+.sidebar-panel.collapsed {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.sidebar-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 24px;
 }
 
 .brand-block {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0;
   align-items: center;
-  margin-bottom: 24px;
+  min-width: 0;
+  flex: 1;
+}
+
+.brand-block.collapsed {
+  justify-content: center;
 }
 
 .brand-copy {
   width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+.brand-block.collapsed .brand-copy {
   text-align: center;
 }
 
@@ -240,6 +294,20 @@ const handleMenuSelect = (key: string) => {
   font-family: var(--font-display);
   font-size: 28px;
   letter-spacing: -0.05em;
+}
+
+.brand-block.collapsed .brand-copy h1 {
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.sidebar-toggle {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+.sidebar-toggle:hover {
+  color: var(--primary-color-strong);
 }
 
 .sidebar-section-label {
@@ -259,20 +327,6 @@ const handleMenuSelect = (key: string) => {
   height: calc(100vh - 32px);
 }
 
-.workspace-topbar {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px 2px;
-}
-
-.workspace-topbar h2 {
-  margin: 0;
-  color: var(--text-color);
-  font-family: var(--font-display);
-  font-size: clamp(26px, 3vw, 34px);
-  letter-spacing: -0.05em;
-}
-
 .workspace-body {
   flex: 1;
   min-height: 0;
@@ -282,6 +336,10 @@ const handleMenuSelect = (key: string) => {
 
 .sidebar-panel :deep(.n-menu) {
   background: transparent !important;
+}
+
+.sidebar-panel.collapsed :deep(.n-menu) {
+  width: 100%;
 }
 
 .sidebar-panel :deep(.n-menu-item-content) {
@@ -307,6 +365,11 @@ const handleMenuSelect = (key: string) => {
 
 .sidebar-panel :deep(.n-menu-item-content__icon) {
   color: #b47a62;
+}
+
+.sidebar-panel.collapsed :deep(.n-menu-item-content) {
+  justify-content: center;
+  margin: 6px 0;
 }
 
 .sidebar-panel :deep(.n-menu-item-content:hover) {
@@ -336,6 +399,10 @@ const handleMenuSelect = (key: string) => {
     grid-template-columns: 1fr;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar-panel {
     position: relative;
     top: 0;
@@ -349,6 +416,11 @@ const handleMenuSelect = (key: string) => {
   .workspace-shell {
     min-height: auto;
     height: auto;
+  }
+
+  .sidebar-panel.collapsed {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }
 
