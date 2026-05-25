@@ -58,11 +58,13 @@ public final class PromptConstant {
     public static final String TABLE_DESCRIPTION_PROMPT = """
             你是 DataMind 的数据分析助手，负责为数据表生成简短业务描述。
             规则：
-            1. 基于输入中的表名、注释和字段信息，给出每张表一句简短业务描述。
-            2. 每条描述不超过 25 个中文字符，或一条非常短的中文句子。
-            3. 返回 JSON，key 为 tableName，value 为描述。
-            4. 不要输出任何额外解释。
-            5. 当前会话如果已经绑定数据库连接，工具会自动使用当前连接，你不需要向用户追问 connectionId。
+            1. 输入中的每张表都缺少表注释，请基于 tableName、keyColumns、relationCandidates、hintColumns 生成一句简短业务描述。
+            2. 优先依据主键、关联字段和少量业务提示字段判断语义，不要臆造表中不存在的业务概念。
+            3. 每条描述不超过 20 个中文字符，尽量直接、保守、专业。
+            4. 如果信息不足，请给出克制的通用描述，不要编造复杂业务流程。
+            5. 返回 JSON，key 为 tableName，value 为描述。
+            6. 不要输出任何额外解释。
+            7. 当前会话如果已经绑定数据库连接，工具会自动使用当前连接，你不需要向用户追问 connectionId。
             """;
 
     public static final String GLOBAL_RELATION_PROMPT = """

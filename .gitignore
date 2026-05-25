@@ -54,3 +54,6 @@ mvnw.cmd
 
 # Local repositories
 .m2repo/
+
+# Runtime generated knowledge files
+data-analysis-backend/storage/knowledge/

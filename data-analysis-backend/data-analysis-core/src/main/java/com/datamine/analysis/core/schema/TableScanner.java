@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,6 +62,9 @@ public class TableScanner {
             Connection connection = connectionService.getConnectionById(connectionId).orElseThrow();
             List<Map<String, Object>> tables = schemaReader.readTables(connection);
             List<Map<String, Object>> foreignKeys = schemaReader.readForeignKeys(connection);
+            List<Map<String, Object>> allColumnRows = schemaReader.readAllColumns(connection);
+            Map<String, List<Map<String, Object>>> groupedColumns = groupColumnsByTable(allColumnRows);
+            Map<String, TableMetadata> existingMetadataMap = loadExistingMetadataMap(connectionId);
 
             int totalTables = tables.size();
             int totalBatches = totalTables == 0 ? 0 : (totalTables + DEFAULT_BATCH_SIZE - 1) / DEFAULT_BATCH_SIZE;
@@ -144,12 +148,12 @@ public class TableScanner {
             Map<String, List<Map<String, Object>>> batchColumns = new LinkedHashMap<>();
             for (Map<String, Object> table : batchTables) {
                 String tableName = stringValue(table.get("TABLE_NAME"));
-                List<Map<String, Object>> columns = schemaReader.readColumns(connection, tableName);
+                List<Map<String, Object>> columns = groupedColumns.getOrDefault(tableName, List.of());
                 batchColumns.put(tableName, columns);
                 allColumns.put(tableName, columns);
             }
 
-            descriptions.putAll(batchGenerateDescriptions(chatClientFactory.getChatClient(), batchTables, batchColumns));
+            descriptions.putAll(resolveTableDescriptions(chatClientFactory.getChatClient(), batchTables, batchColumns));
 
             Map<String, Object> batchCompletedPayload = createProgressPayload(
                     totalTables,
@@ -255,11 +259,9 @@ public class TableScanner {
         for (Map<String, Object> table : tables) {
             String tableName = stringValue(table.get("TABLE_NAME"));
             String tableComment = stringValue(table.get("TABLE_COMMENT"));
-            Long tableRows = table.get("TABLE_ROWS") != null ? ((Number) table.get("TABLE_ROWS")).longValue() : 0L;
+            Long tableRows = resolveTableRowCount(table.get("TABLE_ROWS"));
 
-            TableMetadata metadata = tableMetadataRepository
-                    .findByConnectionIdAndTableName(connectionId, tableName)
-                    .orElse(new TableMetadata());
+            TableMetadata metadata = existingMetadataMap.getOrDefault(tableName, new TableMetadata());
 
             metadata.setConnectionId(connectionId);
             metadata.setTableName(tableName);
@@ -294,45 +296,75 @@ public class TableScanner {
         return tableMetadataRepository.findByConnectionId(connectionId);
     }
 
-    private Map<String, String> batchGenerateDescriptions(ChatClient chatClient,
-                                                          List<Map<String, Object>> tables,
-                                                          Map<String, List<Map<String, Object>>> allColumns) {
-        List<Map<String, Object>> tableData = new ArrayList<>();
+    /**
+     * 优先复用表注释，只有在表注释缺失时才调用 LLM 生成简短描述，
+     * 并且只提供主键、关联字段和少量业务提示字段，避免把整表字段全部发送给模型。
+     */
+    private Map<String, String> resolveTableDescriptions(ChatClient chatClient,
+                                                         List<Map<String, Object>> tables,
+                                                         Map<String, List<Map<String, Object>>> allColumns) {
+        Map<String, String> resolvedDescriptions = new HashMap<>();
+        List<Map<String, Object>> tablesNeedingDescription = new ArrayList<>();
+
         for (Map<String, Object> table : tables) {
             String tableName = stringValue(table.get("TABLE_NAME"));
             String tableComment = stringValue(table.get("TABLE_COMMENT"));
             List<Map<String, Object>> columns = allColumns.getOrDefault(tableName, List.of());
 
-            Map<String, Object> tableInfo = new LinkedHashMap<>();
-            tableInfo.put("tableName", tableName);
-            if (!tableComment.isEmpty()) {
-                tableInfo.put("comment", tableComment);
+            if (StringUtils.hasText(tableComment)) {
+                resolvedDescriptions.put(tableName, tableComment);
+                continue;
             }
-            List<Map<String, Object>> fieldList = columns.stream().map(col -> {
-                Map<String, Object> field = new LinkedHashMap<>();
-                field.put("name", stringValue(col.get("COLUMN_NAME")));
-                field.put("type", stringValue(col.get("COLUMN_TYPE")));
-                String columnComment = stringValue(col.get("COLUMN_COMMENT"));
-                if (!columnComment.isEmpty()) {
-                    field.put("comment", columnComment);
-                }
-                return field;
-            }).toList();
-            tableInfo.put("columns", fieldList);
-            tableData.add(tableInfo);
+
+            tablesNeedingDescription.add(buildDescriptionPayload(tableName, columns));
+        }
+
+        if (tablesNeedingDescription.isEmpty()) {
+            return resolvedDescriptions;
         }
 
         try {
-            return assistantAgentOrchestrator.generateTableDescriptions(chatClient, tableData);
-        } catch (Exception e) {
-            log.warn("Batch description generation failed, falling back to table comments", e);
-            Map<String, String> fallback = new HashMap<>();
-            for (Map<String, Object> table : tables) {
-                String tableName = stringValue(table.get("TABLE_NAME"));
-                fallback.put(tableName, stringValue(table.get("TABLE_COMMENT")));
+            Map<String, String> generatedDescriptions =
+                    assistantAgentOrchestrator.generateTableDescriptions(chatClient, tablesNeedingDescription);
+            for (Map<String, Object> tableInfo : tablesNeedingDescription) {
+                String tableName = stringValue(tableInfo.get("tableName"));
+                String generated = generatedDescriptions.get(tableName);
+                resolvedDescriptions.put(
+                        tableName,
+                        StringUtils.hasText(generated) ? generated.trim() : buildDescriptionFallback(tableName)
+                );
             }
-            return fallback;
+            return resolvedDescriptions;
+        } catch (Exception e) {
+            log.warn("Table description generation failed, falling back to table names", e);
+            for (Map<String, Object> tableInfo : tablesNeedingDescription) {
+                String tableName = stringValue(tableInfo.get("tableName"));
+                resolvedDescriptions.put(tableName, buildDescriptionFallback(tableName));
+            }
+            return resolvedDescriptions;
         }
+    }
+
+    private Map<String, Object> buildDescriptionPayload(String tableName, List<Map<String, Object>> columns) {
+        Map<String, Object> tableInfo = new LinkedHashMap<>();
+        tableInfo.put("tableName", tableName);
+
+        List<Map<String, Object>> keyColumns = buildKeyColumns(columns);
+        if (!keyColumns.isEmpty()) {
+            tableInfo.put("keyColumns", keyColumns);
+        }
+
+        List<Map<String, Object>> relationCandidates = buildRelationCandidates(columns);
+        if (!relationCandidates.isEmpty()) {
+            tableInfo.put("relationCandidates", relationCandidates);
+        }
+
+        List<Map<String, Object>> hintColumns = buildDescriptionHintColumns(columns);
+        if (!hintColumns.isEmpty()) {
+            tableInfo.put("hintColumns", hintColumns);
+        }
+
+        return tableInfo;
     }
 
     private Map<String, List<Map<String, Object>>> analyzeGlobalRelationsByLlm(
@@ -427,6 +459,88 @@ public class TableScanner {
         return candidates;
     }
 
+    /**
+     * 为无注释表挑选少量业务提示字段，尽量减少 token，同时保留能帮助判断业务语义的信息。
+     */
+    private List<Map<String, Object>> buildDescriptionHintColumns(List<Map<String, Object>> columns) {
+        List<Map<String, Object>> hintColumns = new ArrayList<>();
+        Set<String> addedColumns = new LinkedHashSet<>();
+
+        for (Map<String, Object> column : columns) {
+            if (hintColumns.size() >= 6) {
+                break;
+            }
+
+            String columnName = stringValue(column.get("COLUMN_NAME"));
+            String normalizedColumnName = columnName.toLowerCase();
+            String columnComment = stringValue(column.get("COLUMN_COMMENT"));
+
+            if (!StringUtils.hasText(columnName)
+                    || isAuditLikeColumn(normalizedColumnName)
+                    || !StringUtils.hasText(columnComment)) {
+                continue;
+            }
+
+            if (addedColumns.add(normalizedColumnName)) {
+                hintColumns.add(buildHintColumn(columnName, stringValue(column.get("COLUMN_TYPE")), columnComment));
+            }
+        }
+
+        for (Map<String, Object> column : columns) {
+            if (hintColumns.size() >= 6) {
+                break;
+            }
+
+            String columnName = stringValue(column.get("COLUMN_NAME"));
+            String normalizedColumnName = columnName.toLowerCase();
+            if (!StringUtils.hasText(columnName)
+                    || isAuditLikeColumn(normalizedColumnName)
+                    || !looksLikeBusinessHintColumn(normalizedColumnName)
+                    || !addedColumns.add(normalizedColumnName)) {
+                continue;
+            }
+
+            hintColumns.add(buildHintColumn(
+                    columnName,
+                    stringValue(column.get("COLUMN_TYPE")),
+                    stringValue(column.get("COLUMN_COMMENT"))
+            ));
+        }
+
+        for (Map<String, Object> column : columns) {
+            if (hintColumns.size() >= 6) {
+                break;
+            }
+
+            String columnName = stringValue(column.get("COLUMN_NAME"));
+            String normalizedColumnName = columnName.toLowerCase();
+            if (!StringUtils.hasText(columnName)
+                    || isAuditLikeColumn(normalizedColumnName)
+                    || isRelationCandidate(columnName)
+                    || !addedColumns.add(normalizedColumnName)) {
+                continue;
+            }
+
+            hintColumns.add(buildHintColumn(
+                    columnName,
+                    stringValue(column.get("COLUMN_TYPE")),
+                    stringValue(column.get("COLUMN_COMMENT"))
+            ));
+        }
+
+        return hintColumns;
+    }
+
+    private Map<String, Object> buildHintColumn(String name, String type, String comment) {
+        Map<String, Object> hintColumn = new LinkedHashMap<>();
+        hintColumn.put("name", name);
+        hintColumn.put("type", type);
+        if (StringUtils.hasText(comment)) {
+            hintColumn.put("comment", comment);
+        }
+        return hintColumn;
+    }
+
     private boolean isRelationCandidate(String columnName) {
         if (columnName == null || columnName.isBlank()) {
             return false;
@@ -439,6 +553,29 @@ public class TableScanner {
                 || "updated_by".equals(normalized)
                 || "owner_id".equals(normalized)
                 || "tenant_id".equals(normalized);
+    }
+
+    private boolean isAuditLikeColumn(String columnName) {
+        return Set.of(
+                "id", "deleted", "is_deleted", "version",
+                "create_time", "created_at", "created_by",
+                "update_time", "updated_at", "updated_by",
+                "gmt_create", "gmt_modified"
+        ).contains(columnName);
+    }
+
+    private boolean looksLikeBusinessHintColumn(String columnName) {
+        return columnName.contains("name")
+                || columnName.contains("title")
+                || columnName.contains("code")
+                || columnName.contains("type")
+                || columnName.contains("status")
+                || columnName.contains("category")
+                || columnName.contains("amount")
+                || columnName.contains("price")
+                || columnName.contains("content")
+                || columnName.contains("desc")
+                || columnName.contains("remark");
     }
 
     private Map<String, List<Map<String, Object>>> buildForeignKeyMap(List<Map<String, Object>> foreignKeys) {
@@ -555,6 +692,18 @@ public class TableScanner {
         return Math.min(SCAN_PHASE_MAX_PERCENT, (int) Math.round((double) processedTables * SCAN_PHASE_MAX_PERCENT / totalTables));
     }
 
+    /**
+     * 表分析阶段优先采用库侧提供的近似行数，避免逐表 COUNT(*) 导致大库扫描明显变慢。
+     */
+    private Long resolveTableRowCount(Object metadataRowCount) {
+        Long estimatedRowCount = toLong(metadataRowCount);
+        return estimatedRowCount != null ? Math.max(estimatedRowCount, 0L) : 0L;
+    }
+
+    private String buildDescriptionFallback(String tableName) {
+        return tableName + "相关数据";
+    }
+
     private String serializeFields(List<Map<String, Object>> columns) {
         try {
             List<Map<String, Object>> fields = columns.stream().map(col -> {
@@ -618,5 +767,32 @@ public class TableScanner {
 
     private String stringValue(Object value) {
         return value == null ? "" : value.toString().trim();
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return null;
+    }
+
+    private Map<String, List<Map<String, Object>>> groupColumnsByTable(List<Map<String, Object>> columnRows) {
+        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> columnRow : columnRows) {
+            String tableName = stringValue(columnRow.get("TABLE_NAME"));
+            if (!StringUtils.hasText(tableName)) {
+                continue;
+            }
+            grouped.computeIfAbsent(tableName, key -> new ArrayList<>()).add(columnRow);
+        }
+        return grouped;
+    }
+
+    private Map<String, TableMetadata> loadExistingMetadataMap(Long connectionId) {
+        Map<String, TableMetadata> metadataMap = new HashMap<>();
+        for (TableMetadata metadata : tableMetadataRepository.findByConnectionId(connectionId)) {
+            metadataMap.put(metadata.getTableName(), metadata);
+        }
+        return metadataMap;
     }
 }

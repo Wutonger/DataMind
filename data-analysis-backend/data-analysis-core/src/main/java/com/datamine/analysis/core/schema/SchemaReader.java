@@ -1,6 +1,7 @@
 package com.datamine.analysis.core.schema;
 
 import com.datamine.analysis.common.entity.Connection;
+import com.datamine.analysis.common.enums.DatabaseType;
 import com.datamine.analysis.core.datasource.DynamicDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,18 @@ public class SchemaReader {
                 ORDER BY ORDINAL_POSITION
                 """;
         return jdbc.queryForList(sql, connection.getDatabase(), tableName);
+    }
+
+    public List<Map<String, Object>> readAllColumns(Connection connection) {
+        JdbcTemplate jdbc = createJdbcTemplate(connection);
+        String sql = """
+                SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY,
+                       COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT, ORDINAL_POSITION
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = ?
+                ORDER BY TABLE_NAME, ORDINAL_POSITION
+                """;
+        return jdbc.queryForList(sql, connection.getDatabase());
     }
 
     public List<Map<String, Object>> readIndexes(Connection connection, String tableName) {
