@@ -158,7 +158,12 @@
               </div>
             </div>
 
-            <div class="chunk-viewer-body">
+            <div
+              v-if="isMarkdownKnowledgeChunk(currentKnowledgeChunk)"
+              class="chunk-viewer-body markdown-body"
+              v-html="currentKnowledgeChunkHtml"
+            ></div>
+            <div v-else class="chunk-viewer-body">
               {{ currentKnowledgeChunk.content }}
             </div>
           </div>
@@ -187,6 +192,7 @@ import type {
 import { chatApi, knowledgeApi } from '@/api'
 import ChatMessage from '@/components/ChatMessage.vue'
 import { useAppStore } from '@/stores/app'
+import { renderMarkdownContent } from '@/utils/markdown'
 
 interface ConversationMessage {
   id: string
@@ -230,6 +236,7 @@ const knowledgePreviewDocumentId = ref<number | null>(null)
 const activeKnowledgeChunkIndex = ref<number | null>(null)
 
 let messageIdSeed = 0
+let historyAutoScrollTimer: number | null = null
 
 const createMessageId = (prefix: string) => `${prefix}-${Date.now()}-${messageIdSeed++}`
 
@@ -389,6 +396,9 @@ const activeKnowledgeChunkOrderLabel = computed(() => {
 const knowledgePreviewModalTitle = computed(
   () => knowledgePreviewData.value?.document?.name || '知识库片段'
 )
+const currentKnowledgeChunkHtml = computed(() =>
+  renderMarkdownContent(currentKnowledgeChunk.value?.content || '')
+)
 
 const knowledgeStatusLabel = (status?: string) => {
   switch (status) {
@@ -433,6 +443,18 @@ const knowledgeChunkMetaLabel = (chunk?: KnowledgePreviewChunk | null) => {
     return String(chunk.metadata.sectionTitle)
   }
   return '未标注位置'
+}
+
+const isMarkdownKnowledgeChunk = (chunk?: KnowledgePreviewChunk | null) => {
+  const sourceType = String(
+    chunk?.metadata?.sourceType || knowledgePreviewData.value?.document?.type || ''
+  ).toLowerCase()
+  if (sourceType === 'md' || sourceType === 'markdown') {
+    return true
+  }
+
+  const content = chunk?.content || ''
+  return /(^|\n)\s*#{1,6}\s+\S|(^|\n)\s*\|.+\|\s*$|```/.test(content)
 }
 
 const loadKnowledgePreview = async (documentId: number, chunkIndex?: number | null) => {
@@ -496,14 +518,53 @@ const focusAdjacentKnowledgeChunk = (step: number) => {
   focusKnowledgeChunk(chunks[nextIndex].chunkIndex)
 }
 
-const scrollToBottom = () => {
+const resolveScrollContainers = () => {
+  const containers: HTMLElement[] = []
+  if (chatContainer.value) {
+    containers.push(chatContainer.value)
+    const workspaceBody = chatContainer.value.closest('.workspace-body')
+    if (workspaceBody instanceof HTMLElement) {
+      containers.push(workspaceBody)
+    }
+  }
+  return containers
+}
+
+const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
   nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTo({
-        top: chatContainer.value.scrollHeight,
-        behavior: 'smooth'
+    resolveScrollContainers().forEach((container) => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior
+      })
+    })
+  })
+}
+
+const scrollHistoryToBottom = () => {
+  nextTick(() => {
+    const containers = resolveScrollContainers()
+    if (!containers.length) {
+      return
+    }
+
+    const applyScroll = () => {
+      containers.forEach((container) => {
+        container.scrollTop = container.scrollHeight
       })
     }
+
+    applyScroll()
+    window.requestAnimationFrame(applyScroll)
+
+    if (historyAutoScrollTimer) {
+      window.clearTimeout(historyAutoScrollTimer)
+    }
+
+    historyAutoScrollTimer = window.setTimeout(() => {
+      applyScroll()
+      historyAutoScrollTimer = null
+    }, 120)
   })
 }
 
@@ -515,6 +576,10 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const initSession = () => {
+  if (historyAutoScrollTimer) {
+    window.clearTimeout(historyAutoScrollTimer)
+    historyAutoScrollTimer = null
+  }
   sessionId.value = ''
   messages.value = []
   currentAssistantMsg.value = null
@@ -587,7 +652,7 @@ const loadSessionHistory = async (targetSessionId: string) => {
         steps: msg.steps || undefined,
         citations: msg.citations || undefined
       }))
-      scrollToBottom()
+      scrollHistoryToBottom()
     } else {
       initSession()
     }
@@ -870,6 +935,15 @@ watch(
   }
 )
 
+watch(
+  () => hasVisibleMessages.value,
+  (visible) => {
+    if (visible && !loading.value && !currentAssistantMsg.value) {
+      scrollHistoryToBottom()
+    }
+  }
+)
+
 onMounted(() => {
   if (appStore.currentConnectionId) {
     loadSessions()
@@ -884,13 +958,16 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   margin: -10px;
+  height: calc(100% + 20px);
   min-height: calc(100% + 20px);
+  overflow: hidden;
 }
 
 .chat-workspace,
 .chat-unbound-state {
   flex: 1;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   border-radius: 22px;
 }
 
@@ -1168,6 +1245,18 @@ onMounted(() => {
   white-space: pre-wrap;
 }
 
+.chunk-viewer-body.markdown-body {
+  white-space: normal;
+}
+
+.chunk-viewer-body.markdown-body :deep(*:first-child) {
+  margin-top: 0;
+}
+
+.chunk-viewer-body.markdown-body :deep(*:last-child) {
+  margin-bottom: 0;
+}
+
 @media (max-width: 1180px) {
   .chunk-browser {
     grid-template-columns: 1fr;
@@ -1182,6 +1271,7 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .chat-page {
+    height: calc(100% + 20px);
     min-height: calc(100% + 20px);
   }
 

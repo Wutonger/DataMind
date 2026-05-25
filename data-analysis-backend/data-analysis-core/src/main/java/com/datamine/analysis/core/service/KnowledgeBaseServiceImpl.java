@@ -16,6 +16,7 @@ import com.datamine.analysis.common.repository.DocumentChunkRepository;
 import com.datamine.analysis.common.repository.KnowledgeDocumentRepository;
 import com.datamine.analysis.common.service.KnowledgeBaseService;
 import com.datamine.analysis.core.chat.EmbeddingModelFactory;
+import com.datamine.analysis.core.util.ParagraphAwareCharacterTextSplitter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
@@ -28,7 +29,6 @@ import org.springframework.ai.reader.TextReader;
 import org.springframework.ai.reader.markdown.MarkdownDocumentReader;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -55,10 +55,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private static final Set<String> SUPPORTED_TYPES = Set.of("pdf", "txt", "md", "markdown", "docx");
     private static final int CHUNK_SIZE = 800;
     private static final int CHUNK_OVERLAP = 120;
-    private static final int RETRIEVAL_TOP_K = 5;
-    private static final double RETRIEVAL_THRESHOLD = 0.35D;
+    private static final int RETRIEVAL_TOP_K = 3;
+    private static final double RETRIEVAL_THRESHOLD = 0.5D;
     private static final int SNIPPET_MAX_LENGTH = 240;
     private static final Path STORAGE_ROOT = Path.of("storage", "knowledge");
+    private static final ParagraphAwareCharacterTextSplitter KNOWLEDGE_TEXT_SPLITTER =
+            new ParagraphAwareCharacterTextSplitter(CHUNK_SIZE, CHUNK_OVERLAP);
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final DocumentChunkRepository documentChunkRepository;
@@ -98,14 +100,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Override
     public KnowledgeDocumentPreviewDTO previewDocument(Long documentId) {
         KnowledgeDocument document = getDocumentEntity(documentId);
-        List<KnowledgeDocumentChunkPreviewDTO> chunks = documentChunkRepository
-                .findByDocumentIdOrderByChunkIndexAsc(documentId)
-                .stream()
-                .map(chunk -> new KnowledgeDocumentChunkPreviewDTO(
-                        chunk.getChunkIndex(),
-                        defaultString(chunk.getContent()),
-                        parseJsonMap(chunk.getMetadata())))
-                .toList();
+        List<KnowledgeDocumentChunkPreviewDTO> chunks = loadPreviewChunks(document);
         return new KnowledgeDocumentPreviewDTO(toDocumentDto(document), chunks);
     }
 
@@ -163,6 +158,13 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .map(chunk -> scoreChunk(chunk, documentMap.get(chunk.getDocumentId()), queryEmbedding))
                 .filter(Objects::nonNull)
                 .filter(scored -> scored.score() >= RETRIEVAL_THRESHOLD)
+                .collect(Collectors.toMap(
+                        scored -> scored.citation().documentId(),
+                        scored -> scored,
+                        (left, right) -> left.score() >= right.score() ? left : right,
+                        LinkedHashMap::new))
+                .values()
+                .stream()
                 .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
                 .limit(RETRIEVAL_TOP_K)
                 .map(ScoredCitation::citation)
@@ -253,36 +255,70 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         return switch (normalizeType(type)) {
             case "pdf" -> new PagePdfDocumentReader(resource);
             case "txt" -> new TextReader(resource);
-            case "md" -> new MarkdownDocumentReader(sourcePath.toUri().toString());
+            case "md" -> new TextReader(resource);
             case "docx" -> new TikaDocumentReader(resource);
             default -> throw new IllegalArgumentException("Unsupported document type: " + type);
         };
     }
 
+    private List<KnowledgeDocumentChunkPreviewDTO> loadPreviewChunks(KnowledgeDocument document) {
+        if ("md".equals(normalizeType(document.getType()))) {
+            return buildMarkdownPreviewChunks(document);
+        }
+
+        return documentChunkRepository.findByDocumentIdOrderByChunkIndexAsc(document.getId())
+                .stream()
+                .map(chunk -> new KnowledgeDocumentChunkPreviewDTO(
+                        chunk.getChunkIndex(),
+                        defaultString(chunk.getContent()),
+                        parseJsonMap(chunk.getMetadata())))
+                .toList();
+    }
+
+    private List<KnowledgeDocumentChunkPreviewDTO> buildMarkdownPreviewChunks(KnowledgeDocument document) {
+        try {
+            Path sourcePath = resolveExistingPath(document);
+            List<Document> rawDocuments = readSourceDocuments(sourcePath, document.getType());
+            List<Document> chunkDocuments = splitDocuments(rawDocuments, document.getType());
+            List<KnowledgeDocumentChunkPreviewDTO> previewChunks = new ArrayList<>(chunkDocuments.size());
+            for (int index = 0; index < chunkDocuments.size(); index++) {
+                Document chunkDocument = chunkDocuments.get(index);
+                previewChunks.add(new KnowledgeDocumentChunkPreviewDTO(
+                        index,
+                        defaultString(chunkDocument.getText()),
+                        normalizeChunkMetadata(chunkDocument.getMetadata())));
+            }
+            return previewChunks;
+        } catch (Exception ex) {
+            log.warn("Failed to rebuild markdown preview from source. documentId={}", document.getId(), ex);
+            return documentChunkRepository.findByDocumentIdOrderByChunkIndexAsc(document.getId())
+                    .stream()
+                    .map(chunk -> new KnowledgeDocumentChunkPreviewDTO(
+                            chunk.getChunkIndex(),
+                            defaultString(chunk.getContent()),
+                            parseJsonMap(chunk.getMetadata())))
+                    .toList();
+        }
+    }
+
     private List<Document> splitDocuments(List<Document> rawDocuments, String type) {
-        TokenTextSplitter splitter = TokenTextSplitter.builder()
-                .withChunkSize(CHUNK_SIZE)
-                .withMinChunkLengthToEmbed(10)
-                .withMaxNumChunks(10000)
-                .withKeepSeparator(false)
-                .build();
-        List<Document> splitDocuments = splitter.split(rawDocuments);
-        List<Document> normalized = new ArrayList<>(splitDocuments.size());
-        String previousChunkText = null;
-        for (Document splitDocument : splitDocuments) {
-            if (!StringUtils.hasText(splitDocument.getText())) {
+        List<Document> normalized = new ArrayList<>();
+        for (Document rawDocument : rawDocuments) {
+            String sourceText = defaultString(rawDocument.getText());
+            if (!StringUtils.hasText(sourceText)) {
                 continue;
             }
-            String chunkText = splitDocument.getText().trim();
-            if (StringUtils.hasText(previousChunkText)) {
-                chunkText = applyChunkOverlap(previousChunkText, chunkText);
-            }
-            Map<String, Object> metadata = sanitizeMetadata(splitDocument.getMetadata());
+
+            Map<String, Object> metadata = sanitizeMetadata(rawDocument.getMetadata());
             metadata.put("page", resolvePage(metadata));
             metadata.put("sectionTitle", resolveSectionTitle(metadata));
             metadata.put("sourceType", type);
-            normalized.add(new Document(chunkText, sanitizeMetadata(metadata)));
-            previousChunkText = chunkText;
+
+            for (String chunkText : KNOWLEDGE_TEXT_SPLITTER.splitToTextChunks(sourceText)) {
+                if (StringUtils.hasText(chunkText)) {
+                    normalized.add(new Document(chunkText, sanitizeMetadata(metadata)));
+                }
+            }
         }
         if (normalized.isEmpty()) {
             throw new IllegalStateException("No chunk generated from document");
@@ -564,21 +600,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             return normalized;
         }
         return normalized.substring(0, maxLength).trim() + "...";
-    }
-
-    private String applyChunkOverlap(String previousChunk, String currentChunk) {
-        String previous = defaultString(previousChunk).trim();
-        String current = defaultString(currentChunk).trim();
-        if (!StringUtils.hasText(previous) || !StringUtils.hasText(current)) {
-            return current;
-        }
-
-        int overlapStart = Math.max(0, previous.length() - CHUNK_OVERLAP);
-        String overlap = previous.substring(overlapStart).trim();
-        if (!StringUtils.hasText(overlap) || current.startsWith(overlap)) {
-            return current;
-        }
-        return overlap + System.lineSeparator() + current;
     }
 
     private Double roundScore(double score) {

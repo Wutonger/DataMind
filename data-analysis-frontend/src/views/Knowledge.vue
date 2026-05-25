@@ -184,7 +184,12 @@
               </div>
             </div>
 
-            <div class="chunk-viewer-body">
+            <div
+              v-if="isMarkdownChunk(currentChunk)"
+              class="chunk-viewer-body markdown-body"
+              v-html="currentChunkHtml"
+            ></div>
+            <div v-else class="chunk-viewer-body">
               {{ currentChunk.content }}
             </div>
           </div>
@@ -219,6 +224,7 @@ import type {
 } from '@/api'
 import { knowledgeApi } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { renderMarkdownContent } from '@/utils/markdown'
 
 type KnowledgePreviewChunk = KnowledgePreview['chunks'][number]
 
@@ -269,6 +275,7 @@ const activeChunkOrderLabel = computed(() => {
 })
 
 const previewModalTitle = computed(() => previewData.value?.document?.name || '文档预览')
+const currentChunkHtml = computed(() => renderMarkdownContent(currentChunk.value?.content || ''))
 
 const statusLabel = (status?: string) => {
   switch (status) {
@@ -339,6 +346,16 @@ const chunkMetaLabel = (chunk?: KnowledgePreviewChunk | null) => {
     return chunk.metadata.sectionTitle
   }
   return '未标注位置'
+}
+
+const isMarkdownChunk = (chunk?: KnowledgePreviewChunk | null) => {
+  const sourceType = String(chunk?.metadata?.sourceType || previewData.value?.document?.type || '').toLowerCase()
+  if (sourceType === 'md' || sourceType === 'markdown') {
+    return true
+  }
+
+  const content = chunk?.content || ''
+  return /(^|\n)\s*#{1,6}\s+\S|(^|\n)\s*\|.+\|\s*$|```/.test(content)
 }
 
 const loadPreview = async (documentId: number, chunkIndex?: number | null) => {
@@ -1018,6 +1035,18 @@ onMounted(() => {
   font-size: 13px;
   line-height: 1.9;
   white-space: pre-wrap;
+}
+
+.chunk-viewer-body.markdown-body {
+  white-space: normal;
+}
+
+.chunk-viewer-body.markdown-body :deep(*:first-child) {
+  margin-top: 0;
+}
+
+.chunk-viewer-body.markdown-body :deep(*:last-child) {
+  margin-bottom: 0;
 }
 
 .detail-empty {
