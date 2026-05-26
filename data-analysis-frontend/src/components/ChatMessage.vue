@@ -60,7 +60,7 @@
             :key="`${citation.documentId}-${citation.chunkIndex}`"
             type="button"
             class="source-link"
-            :title="citation.snippet"
+            :title="`${citation.documentName} - 片段 ${citation.chunkIndex + 1}`"
             @click="openCitation(citation)"
           >
             <span class="source-name">{{ citation.documentName }}</span>

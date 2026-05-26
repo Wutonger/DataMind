@@ -6,7 +6,7 @@ public record KnowledgeCitationDTO(
         Long documentId,
         String documentName,
         Integer chunkIndex,
-        String snippet,
+        String content,
         Double score,
         Map<String, Object> metadata
 ) {

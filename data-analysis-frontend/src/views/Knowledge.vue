@@ -83,7 +83,6 @@
                   <template v-else>片段 {{ citation.chunkIndex + 1 }}</template>
                 </span>
               </div>
-              <p>{{ citation.snippet }}</p>
             </button>
           </div>
 

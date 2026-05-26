@@ -15,7 +15,7 @@ export interface KnowledgeCitation {
   documentId: number
   documentName: string
   chunkIndex: number
-  snippet: string
+  content: string
   score: number
   metadata?: Record<string, any>
 }

@@ -57,7 +57,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private static final int CHUNK_OVERLAP = 120;
     private static final int RETRIEVAL_TOP_K = 3;
     private static final double RETRIEVAL_THRESHOLD = 0.5D;
-    private static final int SNIPPET_MAX_LENGTH = 240;
     private static final Path STORAGE_ROOT = Path.of("storage", "knowledge");
     private static final ParagraphAwareCharacterTextSplitter KNOWLEDGE_TEXT_SPLITTER =
             new ParagraphAwareCharacterTextSplitter(CHUNK_SIZE, CHUNK_OVERLAP);
@@ -133,13 +132,16 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     public KnowledgeSearchResponseDTO search(KnowledgeSearchRequestDTO request) {
         Long connectionId = request.connectionId();
         validateConnection(connectionId);
-        if (!StringUtils.hasText(request.query())) {
+        String question = request.query();
+        if (!StringUtils.hasText(question)) {
+            logKnowledgeSearch(question, false, 0, "empty_query");
             return new KnowledgeSearchResponseDTO("", List.of());
         }
 
         List<KnowledgeDocument> readyDocuments = knowledgeDocumentRepository
                 .findByConnectionIdAndStatus(connectionId, "ready");
         if (readyDocuments.isEmpty()) {
+            logKnowledgeSearch(question, false, 0, "no_ready_documents");
             return new KnowledgeSearchResponseDTO("当前连接下还没有可用的知识库文档。", List.of());
         }
 
@@ -150,10 +152,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .toList();
 
         if (candidateChunks.isEmpty()) {
+            logKnowledgeSearch(question, false, 0, "no_candidate_chunks");
             return new KnowledgeSearchResponseDTO("当前连接下还没有可检索的知识分块。", List.of());
         }
 
-        float[] queryEmbedding = embeddingModelFactory.getEmbeddingModel().embed(request.query());
+        float[] queryEmbedding = embeddingModelFactory.getEmbeddingModel().embed(question);
         List<KnowledgeCitationDTO> citations = candidateChunks.stream()
                 .map(chunk -> scoreChunk(chunk, documentMap.get(chunk.getDocumentId()), queryEmbedding))
                 .filter(Objects::nonNull)
@@ -170,6 +173,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .map(ScoredCitation::citation)
                 .toList();
 
+        logKnowledgeSearch(question, !citations.isEmpty(), citations.size(), citations.isEmpty() ? "no_match" : "matched");
         return new KnowledgeSearchResponseDTO(buildSearchSummary(citations), citations);
     }
 
@@ -361,7 +365,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 chunk.getDocumentId(),
                 document.getName(),
                 chunk.getChunkIndex(),
-                abbreviate(chunk.getContent(), SNIPPET_MAX_LENGTH),
+                defaultString(chunk.getContent()).trim(),
                 roundScore(cosine),
                 metadata));
     }
@@ -373,8 +377,20 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         return citations.stream()
                 .limit(3)
-                .map(citation -> citation.documentName() + " · " + citation.snippet())
+                .map(citation -> citation.documentName() + " · 片段 " + (citation.chunkIndex() + 1))
                 .collect(Collectors.joining("\n"));
+    }
+
+    private void logKnowledgeSearch(String question, boolean matched, int hitCount, String reason) {
+        log.info("Knowledge search. question=\"{}\", matched={}, hitCount={}, reason={}",
+                normalizeQuestionForLog(question), matched, hitCount, reason);
+    }
+
+    private String normalizeQuestionForLog(String question) {
+        if (!StringUtils.hasText(question)) {
+            return "";
+        }
+        return question.replaceAll("\\s+", " ").trim();
     }
 
     private KnowledgeDocumentDTO toDocumentDto(KnowledgeDocument document) {
