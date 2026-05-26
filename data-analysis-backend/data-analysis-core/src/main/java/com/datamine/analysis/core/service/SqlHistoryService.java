@@ -5,6 +5,7 @@ import com.datamine.analysis.common.repository.SqlHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -68,5 +69,16 @@ public class SqlHistoryService {
 
     public List<SqlHistory> getBySessionId(String sessionId) {
         return sqlHistoryRepository.findBySessionIdOrderByCreatedAtDesc(sessionId);
+    }
+
+    @Transactional
+    public void deleteByConnectionId(Long connectionId, Long historyId) {
+        if (connectionId == null || historyId == null) {
+            throw new IllegalArgumentException("connectionId and historyId are required");
+        }
+        if (!sqlHistoryRepository.existsByIdAndConnectionId(historyId, connectionId)) {
+            throw new IllegalArgumentException("SQL history not found: " + historyId);
+        }
+        sqlHistoryRepository.deleteByIdAndConnectionId(historyId, connectionId);
     }
 }

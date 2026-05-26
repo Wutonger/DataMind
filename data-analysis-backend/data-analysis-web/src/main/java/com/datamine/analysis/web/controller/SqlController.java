@@ -70,4 +70,15 @@ public class SqlController {
     public ResponseEntity<List<SqlHistory>> getHistory(@PathVariable Long connectionId) {
         return ResponseEntity.ok(sqlHistoryService.getRecentByConnectionId(connectionId));
     }
+
+    @DeleteMapping("/history/{connectionId}/{historyId}")
+    public ResponseEntity<Map<String, Object>> deleteHistory(@PathVariable Long connectionId,
+                                                             @PathVariable Long historyId) {
+        try {
+            sqlHistoryService.deleteByConnectionId(connectionId, historyId);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

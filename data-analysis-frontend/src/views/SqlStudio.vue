@@ -36,17 +36,33 @@
           </div>
 
           <div v-if="sqlHistory.length > 0" class="history-list">
-            <button
+            <div
               v-for="(item, index) in sqlHistory"
               :key="item.id ?? `${index}-${item.time}`"
-              type="button"
               class="history-item"
               :class="{ active: isHistoryActive(item) }"
-              @click="loadHistory(item)"
             >
-              <span class="history-sql">{{ summarizeHistoryLabel(item) }}</span>
-              <span class="history-time">{{ item.time }}</span>
-            </button>
+              <button
+                type="button"
+                class="history-item-main"
+                @click="loadHistory(item)"
+              >
+                <span class="history-sql">{{ summarizeHistoryLabel(item) }}</span>
+                <span class="history-time">{{ item.time }}</span>
+              </button>
+              <button
+                v-if="item.id"
+                type="button"
+                class="history-delete"
+                title="删除历史"
+                aria-label="删除历史"
+                @click.stop="removeHistory(item)"
+              >
+                <n-icon size="14">
+                  <TrashOutline />
+                </n-icon>
+              </button>
+            </div>
           </div>
 
           <div v-else class="sql-history-empty">还没有查询记录</div>
@@ -110,7 +126,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NInput, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, useDialog, useMessage } from 'naive-ui'
+import { TrashOutline } from '@vicons/ionicons5'
 import { sqlApi } from '@/api'
 import DataTable from '@/components/DataTable.vue'
 import SqlEditor from '@/components/SqlEditor.vue'
@@ -118,6 +135,7 @@ import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
 const message = useMessage()
+const dialog = useDialog()
 const router = useRouter()
 
 const naturalLanguage = ref('')
@@ -295,6 +313,34 @@ const loadHistory = (item: SqlHistoryItem) => {
   sqlContent.value = item.sql
   naturalLanguage.value = item.naturalLanguage || ''
   queryError.value = ''
+}
+
+const removeHistory = async (item: SqlHistoryItem) => {
+  if (!appStore.currentConnectionId || !item.id) {
+    return
+  }
+
+  dialog.warning({
+    title: '删除生成历史',
+    content: '删除后将无法恢复这条生成历史，是否继续？',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await sqlApi.deleteHistory(appStore.currentConnectionId!, item.id!)
+        if (isHistoryActive(item)) {
+          sqlContent.value = ''
+          naturalLanguage.value = ''
+          queryResult.value = { columns: [], rows: [] }
+          queryError.value = ''
+        }
+        sqlHistory.value = sqlHistory.value.filter((historyItem) => historyItem.id !== item.id)
+        message.success('历史记录已删除')
+      } catch {
+        message.error('删除历史记录失败')
+      }
+    }
+  })
 }
 
 const formatHistoryTime = (item: any) => {
@@ -533,21 +579,31 @@ watch(
 }
 
 .history-item {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: var(--background-muted);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.history-item-main {
   appearance: none;
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  background: var(--background-muted);
+  padding: 0;
+  padding-right: 34px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   text-align: left;
   cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.18s ease;
+  box-shadow: none;
 }
 
 .history-item:hover {
@@ -559,6 +615,42 @@ watch(
 .history-item.active {
   border-color: var(--border-accent);
   background: var(--surface-active);
+}
+
+.history-delete {
+  appearance: none;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-3px);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    color 0.18s ease;
+}
+
+.history-item:hover .history-delete,
+.history-item:focus-within .history-delete {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.history-delete:hover {
+  color: var(--accent-color);
 }
 
 .history-sql {

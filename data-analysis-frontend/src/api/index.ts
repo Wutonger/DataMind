@@ -136,7 +136,9 @@ export const sqlApi = {
   execute: (connectionId: number, sql: string) => axios.post('/api/sql/execute', { connectionId, sql }),
   generate: (connectionId: number, question: string) => axios.post('/api/sql/generate', { connectionId, question }),
   format: (sql: string) => axios.post('/api/sql/format', { sql }),
-  getHistory: (connectionId: number) => axios.get(`/api/sql/history/${connectionId}`)
+  getHistory: (connectionId: number) => axios.get(`/api/sql/history/${connectionId}`),
+  deleteHistory: (connectionId: number, historyId: number) =>
+    axios.delete(`/api/sql/history/${connectionId}/${historyId}`)
 }
 
 export const reportApi = {

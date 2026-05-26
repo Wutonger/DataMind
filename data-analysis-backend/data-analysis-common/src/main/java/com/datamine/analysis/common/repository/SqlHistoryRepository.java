@@ -11,4 +11,6 @@ public interface SqlHistoryRepository extends JpaRepository<SqlHistory, Long> {
     List<SqlHistory> findByConnectionIdOrderByCreatedAtDesc(Long connectionId);
     List<SqlHistory> findBySessionIdOrderByCreatedAtDesc(String sessionId);
     List<SqlHistory> findTop20ByConnectionIdOrderByCreatedAtDesc(Long connectionId);
+    void deleteByIdAndConnectionId(Long id, Long connectionId);
+    boolean existsByIdAndConnectionId(Long id, Long connectionId);
 }
