@@ -11,6 +11,7 @@ import java.util.Map;
 public record ChatExecutionResult(
         String content,
         List<Map<String, Object>> steps,
+        String reasoning,
         List<KnowledgeCitationDTO> citations
 ) {
 }

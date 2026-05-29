@@ -198,6 +198,8 @@ interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string
+  reasoningEnabled?: boolean
   steps?: AgentStep[]
   citations?: KnowledgeCitation[]
 }
@@ -267,6 +269,7 @@ const mergeStepStatus = (
 }
 
 const cloneSteps = (steps?: AgentStep[]) => steps?.map((step) => ({ ...step }))
+const cloneReasoning = (reasoning?: string) => reasoning || ''
 const cloneCitations = (citations?: KnowledgeCitation[]) =>
   citations?.map((citation) => ({ ...citation, metadata: citation.metadata ? { ...citation.metadata } : undefined }))
 
@@ -649,6 +652,7 @@ const loadSessionHistory = async (targetSessionId: string) => {
         id: msg.id || createMessageId(`history-${index}`),
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content || msg.text || '',
+        reasoning: msg.reasoning || '',
         steps: msg.steps || undefined,
         citations: msg.citations || undefined
       }))
@@ -669,14 +673,16 @@ const finalizeAssistantMessage = () => {
   }
 
   const hasContent = Boolean(assistantMessage.content.trim())
+  const hasReasoning = Boolean(assistantMessage.reasoning?.trim())
   const hasSteps = Boolean(assistantMessage.steps?.length)
   const hasCitations = Boolean(assistantMessage.citations?.length)
 
-  if (hasContent || hasSteps || hasCitations) {
+  if (hasContent || hasReasoning || hasSteps || hasCitations) {
     messages.value.push({
       id: assistantMessage.id,
       role: 'assistant',
       content: assistantMessage.content,
+      reasoning: cloneReasoning(assistantMessage.reasoning),
       steps: cloneSteps(assistantMessage.steps),
       citations: cloneCitations(assistantMessage.citations)
     })
@@ -728,6 +734,8 @@ const sendMessage = async () => {
     id: createMessageId('assistant'),
     role: 'assistant',
     content: '',
+    reasoning: '',
+    reasoningEnabled: false,
     steps: [],
     citations: []
   }
@@ -787,6 +795,13 @@ const handleAgentEvent = (event: AgentEvent) => {
 
   switch (event.type) {
     case 'WORKFLOW_STARTED':
+      bindSessionIdFromEvent(event)
+      currentAssistantMsg.value.reasoningEnabled = Boolean(event.data.reasoningEnabled)
+      if (event.data.runId) {
+        latestWorkflowRunId.value = event.data.runId
+      }
+      break
+
     case 'WORKFLOW_COMPLETED':
       bindSessionIdFromEvent(event)
       if (event.data.runId) {
@@ -856,6 +871,12 @@ const handleAgentEvent = (event: AgentEvent) => {
 
     case 'THINKING':
       showIntermediateThinkingStep.value = false
+      currentAssistantMsg.value.reasoning = `${currentAssistantMsg.value.reasoning || ''}${event.data.token || ''}`
+      scrollToBottom()
+      break
+
+    case 'ANSWER_DELTA':
+      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content += event.data.token || ''
       scrollToBottom()
       break
@@ -866,6 +887,10 @@ const handleAgentEvent = (event: AgentEvent) => {
       bindSessionIdFromEvent(event)
       showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content = event.data.content || currentAssistantMsg.value.content || ''
+      currentAssistantMsg.value.reasoning = event.data.reasoning || currentAssistantMsg.value.reasoning || ''
+      currentAssistantMsg.value.reasoningEnabled = Boolean(
+        event.data.reasoningEnabled ?? currentAssistantMsg.value.reasoningEnabled
+      )
       currentAssistantMsg.value.citations = event.data.citations || []
       if (event.data.workflowRunId || event.data.runId) {
         latestWorkflowRunId.value = event.data.workflowRunId || event.data.runId || ''

@@ -29,7 +29,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/chat',
     name: 'Chat',
-    component: () => import('@/views/Chat.vue')
+    component: () => import('@/views/Chat.vue'),
+    meta: {
+      keepAlive: true
+    }
   },
   {
     path: '/reports',

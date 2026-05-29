@@ -214,10 +214,10 @@ const appStore = useAppStore()
 const sceneMetaList: SceneMeta[] = [
   {
     key: 'chat',
-    label: '智能问答',
-    entryLabel: '返回智能问答',
+    label: '智能执行',
+    entryLabel: '返回智能执行',
     entryRoute: '/chat',
-    emptyHint: '先在智能问答中发起一次提问，这里就会展示真实的执行过程。'
+    emptyHint: '先在智能执行中发起一次任务，这里就会展示真实的执行过程。'
   },
   {
     key: 'sql',

@@ -21,11 +21,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -66,14 +67,16 @@ public class AssistantAgentOrchestrator {
     public Flux<String> orchestrateStream(String conversationId,
                                           Long connectionId,
                                           String userInput,
-                                          ChatClient chatClient,
+                                          ChatModel chatModel,
                                           ChatMemory chatMemory,
+                                          boolean reasoningEnabled,
                                           Consumer<ChatExecutionResult> completionCallback) {
         return Flux.create(emitter -> {
             List<Map<String, Object>> executedSteps = Collections.synchronizedList(new ArrayList<>());
             List<KnowledgeCitationDTO> collectedCitations = Collections.synchronizedList(new ArrayList<>());
             AtomicReference<OverAllState> latestState = new AtomicReference<>();
             StringBuilder responseBuilder = new StringBuilder();
+            StringBuilder reasoningBuilder = new StringBuilder();
             String workflowRunId = workflowRunTracker.startRun("chat", connectionId, summarizeTitle(userInput));
             String setupStepId = workflowRunId + "-setup";
             String finalStepId = workflowRunId + "-final";
@@ -100,15 +103,16 @@ public class AssistantAgentOrchestrator {
                         "runId", workflowRunId,
                         "sessionId", conversationId,
                         "scene", "chat",
-                        "title", summarizeTitle(userInput)
+                        "title", summarizeTitle(userInput),
+                        "reasoningEnabled", reasoningEnabled
                 )));
 
                 List<Message> inputMessages = loadConversationMessages(conversationId, userInput, chatMemory);
                 Agent assistantAgent = buildChatAgent(
                         connectionId,
                         userInput,
-                        chatClient,
-                        chatMemory,
+                        chatModel,
+                        reasoningEnabled,
                         eventConsumer,
                         executedSteps,
                         collectedCitations,
@@ -124,7 +128,12 @@ public class AssistantAgentOrchestrator {
 
                 Disposable disposable = assistantAgent.stream(inputMessages, runnableConfig)
                         .doOnNext(nodeOutput -> latestState.set(nodeOutput.state()))
-                        .subscribe(nodeOutput -> handleNodeOutput(nodeOutput, responseBuilder, eventConsumer),
+                        .subscribe(nodeOutput -> handleNodeOutput(
+                                        nodeOutput,
+                                        responseBuilder,
+                                        reasoningBuilder,
+                                        reasoningEnabled,
+                                        eventConsumer),
                                 error -> {
                                     String message = summarizeError(error);
                                     List<Map<String, Object>> finalSteps = copySteps(executedSteps);
@@ -156,6 +165,7 @@ public class AssistantAgentOrchestrator {
                                     String fullResponse = extractFinalResponse(latestState.get())
                                             .filter(StringUtils::hasText)
                                             .orElseGet(responseBuilder::toString);
+                                    String reasoning = reasoningBuilder.toString().trim();
 
                                     if (!StringUtils.hasText(fullResponse)) {
                                         fullResponse = "抱歉，我暂时没有生成有效回复。";
@@ -174,6 +184,8 @@ public class AssistantAgentOrchestrator {
                                     )));
                                     eventConsumer.accept(toJsonEvent("FINAL_RESPONSE", Map.of(
                                             "content", fullResponse,
+                                            "reasoning", reasoning,
+                                            "reasoningEnabled", reasoningEnabled,
                                             "citations", finalCitations,
                                             "workflowRunId", workflowRunId,
                                             "sessionId", conversationId
@@ -187,6 +199,7 @@ public class AssistantAgentOrchestrator {
                                             userInput,
                                             fullResponse,
                                             finalSteps,
+                                            reasoning,
                                             finalCitations,
                                             completionCallback
                                     );
@@ -227,7 +240,7 @@ public class AssistantAgentOrchestrator {
      */
     public SqlExecutionResult generateSql(Long connectionId,
                                           String userInput,
-                                          ChatClient chatClient) {
+                                          ChatModel chatModel) {
         String workflowRunId = workflowRunTracker.startRun("sql", connectionId, summarizeTitle(userInput));
         String setupStepId = workflowRunId + "-setup";
         String finalStepId = workflowRunId + "-final";
@@ -248,7 +261,7 @@ public class AssistantAgentOrchestrator {
             );
             workflowRunTracker.addTimeline(workflowRunId, setupStepId, ASSISTANT_OWNER, "开始准备 SQL 生成任务");
 
-            Agent assistantAgent = buildSqlAgent(connectionId, userInput, chatClient, executedSteps, workflowRunId);
+            Agent assistantAgent = buildSqlAgent(connectionId, userInput, chatModel, executedSteps, workflowRunId);
 
             RunnableConfig runnableConfig = RunnableConfig.builder()
                     .threadId(workflowRunId)
@@ -318,7 +331,7 @@ public class AssistantAgentOrchestrator {
      */
     public ReportExecutionResult generateReport(Long connectionId,
                                                 String userRequirement,
-                                                ChatClient chatClient) {
+                                                ChatModel chatModel) {
         String workflowRunId = workflowRunTracker.startRun("report", connectionId, summarizeTitle(userRequirement));
         String setupStepId = workflowRunId + "-setup";
         String finalStepId = workflowRunId + "-final";
@@ -340,7 +353,7 @@ public class AssistantAgentOrchestrator {
             );
             workflowRunTracker.addTimeline(workflowRunId, setupStepId, ASSISTANT_OWNER, "开始准备报表产物生成任务");
 
-            Agent assistantAgent = buildReportAgent(connectionId, userRequirement, chatClient, executedSteps, toolExecutions::add, workflowRunId);
+            Agent assistantAgent = buildReportAgent(connectionId, userRequirement, chatModel, executedSteps, toolExecutions::add, workflowRunId);
 
             RunnableConfig runnableConfig = RunnableConfig.builder()
                     .threadId(workflowRunId)
@@ -459,25 +472,25 @@ public class AssistantAgentOrchestrator {
     /**
      * 为表结构分析生成简短业务描述。
      */
-    public Map<String, String> generateTableDescriptions(ChatClient chatClient,
+    public Map<String, String> generateTableDescriptions(ChatModel chatModel,
                                                          List<Map<String, Object>> tablePayload) {
-        return invokeStructuredAgent(chatClient, PromptConstant.TABLE_DESCRIPTION_PROMPT, tablePayload, new TypeReference<>() {
+        return invokeStructuredAgent(chatModel, PromptConstant.TABLE_DESCRIPTION_PROMPT, tablePayload, new TypeReference<>() {
         });
     }
 
     /**
      * 根据全库结构信息输出标准化关系结果。
      */
-    public Map<String, List<Map<String, Object>>> analyzeGlobalRelations(ChatClient chatClient,
+    public Map<String, List<Map<String, Object>>> analyzeGlobalRelations(ChatModel chatModel,
                                                                          Map<String, Object> relationPayload) {
-        return invokeStructuredAgent(chatClient, PromptConstant.GLOBAL_RELATION_PROMPT, relationPayload, new TypeReference<>() {
+        return invokeStructuredAgent(chatModel, PromptConstant.GLOBAL_RELATION_PROMPT, relationPayload, new TypeReference<>() {
         });
     }
 
     private Agent buildChatAgent(Long connectionId,
                                  String userInput,
-                                 ChatClient chatClient,
-                                 ChatMemory chatMemory,
+                                 ChatModel chatModel,
+                                 boolean reasoningEnabled,
                                  Consumer<String> eventConsumer,
                                  List<Map<String, Object>> executedSteps,
                                  List<KnowledgeCitationDTO> collectedCitations,
@@ -495,16 +508,17 @@ public class AssistantAgentOrchestrator {
 
         return buildReactAgent(
                 appendCapabilityHint(PromptConstant.CHAT_AGENT_PROMPT, connectionId, toolset.isEmpty()),
-                chatClient,
+                chatModel,
                 toolset.baseCallbacks(),
                 interceptor,
+                reasoningEnabled,
                 toolset.skillHook()
         );
     }
 
     private Agent buildSqlAgent(Long connectionId,
                                 String userInput,
-                                ChatClient chatClient,
+                                ChatModel chatModel,
                                 List<Map<String, Object>> executedSteps,
                                 String workflowRunId) {
         AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createSqlToolset(connectionId, userInput);
@@ -524,12 +538,12 @@ public class AssistantAgentOrchestrator {
                 workflowRunId
         );
 
-        return buildReactAgent(PromptConstant.SQL_AGENT_PROMPT, chatClient, toolset.baseCallbacks(), interceptor, toolset.skillHook());
+        return buildReactAgent(PromptConstant.SQL_AGENT_PROMPT, chatModel, toolset.baseCallbacks(), interceptor, false, toolset.skillHook());
     }
 
     private Agent buildReportAgent(Long connectionId,
                                    String userInput,
-                                   ChatClient chatClient,
+                                   ChatModel chatModel,
                                    List<Map<String, Object>> executedSteps,
                                    Consumer<ToolExecutionRecord> toolResultConsumer,
                                    String workflowRunId) {
@@ -550,7 +564,7 @@ public class AssistantAgentOrchestrator {
                 workflowRunId
         );
 
-        return buildReactAgent(PromptConstant.REPORT_AGENT_PROMPT, chatClient, toolset.baseCallbacks(), interceptor, toolset.skillHook());
+        return buildReactAgent(PromptConstant.REPORT_AGENT_PROMPT, chatModel, toolset.baseCallbacks(), interceptor, false, toolset.skillHook());
     }
 
     private StepTrackingToolInterceptor buildTrackingInterceptor(Consumer<String> eventConsumer,
@@ -576,14 +590,16 @@ public class AssistantAgentOrchestrator {
     }
 
     private Agent buildReactAgent(String systemPrompt,
-                                  ChatClient chatClient,
+                                  ChatModel chatModel,
                                   List<ToolCallback> toolCallbacks,
                                   StepTrackingToolInterceptor interceptor,
+                                  boolean reasoningEnabled,
                                   com.alibaba.cloud.ai.graph.agent.hook.Hook... hooks) {
         var builder = ReactAgent.builder()
                 .name(ASSISTANT_AGENT)
                 .description(ASSISTANT_OWNER)
-                .chatClient(chatClient)
+                .model(chatModel)
+                .returnReasoningContents(reasoningEnabled)
                 .systemPrompt(systemPrompt)
                 .tools(toolCallbacks);
 
@@ -597,12 +613,12 @@ public class AssistantAgentOrchestrator {
         return builder.build();
     }
 
-    private <T> T invokeStructuredAgent(ChatClient chatClient,
+    private <T> T invokeStructuredAgent(ChatModel chatModel,
                                         String systemPrompt,
                                         Object payload,
                                         TypeReference<T> typeReference) {
         try {
-            Agent assistantAgent = buildReactAgent(systemPrompt, chatClient, List.of(), null);
+            Agent assistantAgent = buildReactAgent(systemPrompt, chatModel, List.of(), null, false);
             String input = objectMapper.writeValueAsString(payload);
             String response = assistantAgent.invoke(
                     List.of(new UserMessage(input)),
@@ -652,6 +668,8 @@ public class AssistantAgentOrchestrator {
 
     private void handleNodeOutput(NodeOutput nodeOutput,
                                   StringBuilder responseBuilder,
+                                  StringBuilder reasoningBuilder,
+                                  boolean reasoningEnabled,
                                   Consumer<String> eventConsumer) {
         if (!(nodeOutput instanceof StreamingOutput<?> streamingOutput)) {
             return;
@@ -660,13 +678,61 @@ public class AssistantAgentOrchestrator {
             return;
         }
 
+        String reasoningChunk = "";
+        if (reasoningEnabled) {
+            reasoningChunk = extractReasoningChunk(streamingOutput);
+            if (StringUtils.hasText(reasoningChunk)) {
+                reasoningBuilder.append(reasoningChunk);
+                eventConsumer.accept(toJsonEvent("THINKING", Map.of("token", reasoningChunk)));
+            }
+        }
+
         String chunk = streamingOutput.chunk();
-        if (!StringUtils.hasText(chunk)) {
+        if (!StringUtils.hasText(chunk) || chunk.equals(reasoningChunk)) {
             return;
         }
 
         responseBuilder.append(chunk);
-        eventConsumer.accept(toJsonEvent("THINKING", Map.of("token", chunk)));
+        eventConsumer.accept(toJsonEvent("ANSWER_DELTA", Map.of("token", chunk)));
+    }
+
+    private String extractReasoningChunk(StreamingOutput<?> streamingOutput) {
+        String fromMessage = extractReasoningFromMessage(streamingOutput.message());
+        if (StringUtils.hasText(fromMessage)) {
+            return fromMessage;
+        }
+
+        Object originData = streamingOutput.getOriginData();
+        if (originData instanceof OpenAiApi.ChatCompletionChunk chunk) {
+            return chunk.choices().stream()
+                    .map(choice -> choice.delta())
+                    .filter(Objects::nonNull)
+                    .map(OpenAiApi.ChatCompletionMessage::reasoningContent)
+                    .filter(StringUtils::hasText)
+                    .collect(java.util.stream.Collectors.joining());
+        }
+        return "";
+    }
+
+    private String extractReasoningFromMessage(Message message) {
+        if (message == null) {
+            return "";
+        }
+        return extractReasoningFromMetadata(message.getMetadata());
+    }
+
+    private String extractReasoningFromMetadata(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return "";
+        }
+
+        for (String key : List.of("reasoningContent", "reasoning_content", "reasoning", "thinking")) {
+            Object value = metadata.get(key);
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                return text;
+            }
+        }
+        return "";
     }
 
     private Optional<String> extractFinalResponse(OverAllState state) {
@@ -732,6 +798,7 @@ public class AssistantAgentOrchestrator {
                                             String userInput,
                                             String fullResponse,
                                             List<Map<String, Object>> finalSteps,
+                                            String reasoning,
                                             List<KnowledgeCitationDTO> finalCitations,
                                             Consumer<ChatExecutionResult> completionCallback) {
         CompletableFuture.runAsync(() -> {
@@ -768,7 +835,7 @@ public class AssistantAgentOrchestrator {
             }
 
             try {
-                completionCallback.accept(new ChatExecutionResult(fullResponse, finalSteps, finalCitations));
+                completionCallback.accept(new ChatExecutionResult(fullResponse, finalSteps, reasoning, finalCitations));
             } catch (Exception e) {
                 log.error("Failed to persist chat history. sessionId={}, workflowRunId={}",
                         conversationId, workflowRunId, e);
@@ -793,7 +860,7 @@ public class AssistantAgentOrchestrator {
             }
 
             try {
-                completionCallback.accept(new ChatExecutionResult(message, finalSteps, finalCitations));
+                completionCallback.accept(new ChatExecutionResult(message, finalSteps, "", finalCitations));
             } catch (Exception e) {
                 log.error("Failed to persist failed chat history. sessionId={}, workflowRunId={}",
                         conversationId, workflowRunId, e);

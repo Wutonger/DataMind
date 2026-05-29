@@ -41,9 +41,53 @@
     </div>
 
     <div v-if="showMessageBubble" class="message-bubble markdown-body">
+      <div v-if="showReasoningPanel" class="reasoning-panel" :class="{ expanded: reasoningExpanded }">
+        <button type="button" class="reasoning-toggle" @click="toggleReasoning">
+          <span class="reasoning-toggle-main">
+            <span class="reasoning-title">思考过程</span>
+            <n-icon class="reasoning-arrow" :class="{ expanded: reasoningExpanded }">
+              <ChevronDownOutline />
+            </n-icon>
+          </span>
+        </button>
+
+        <div v-if="reasoningExpanded" class="reasoning-body">
+          <div class="reasoning-stream-head">
+            <span class="reasoning-stream-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" class="thinking-glyph" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M8 2.2c-2.6 0-4.7 2.1-4.7 4.7 0 .8.2 1.5.5 2.1-.3.4-.4.8-.4 1.3 0 1.3.9 2.4 2.2 2.7.4.8 1.2 1.4 2.2 1.4.6 0 1.2-.2 1.6-.6.4.4 1 .6 1.6.6 1 0 1.8-.6 2.2-1.4 1.3-.3 2.2-1.4 2.2-2.7 0-.5-.1-.9-.4-1.3.3-.6.5-1.3.5-2.1 0-2.6-2.1-4.7-4.7-4.7-.6 0-1.3.2-1.9.5-.6-.3-1.3-.5-1.9-.5Z"
+                  stroke="currentColor"
+                  stroke-width="0.95"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M8.35 4.2v7.6"
+                  stroke="currentColor"
+                  stroke-width="0.95"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+            <span class="reasoning-stream-label">思考</span>
+          </div>
+
+          <div v-if="formattedReasoning" class="reasoning-card" v-html="formattedReasoning"></div>
+          <div v-else class="reasoning-card reasoning-waiting" aria-live="polite" aria-label="正在思考">
+            <span class="thinking-label">正在思考</span>
+            <span class="thinking-dots" aria-hidden="true">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div v-if="formattedContent" v-html="formattedContent"></div>
 
-      <div v-else class="thinking-indicator" aria-live="polite" aria-label="正在思考">
+      <div v-else-if="showThinkingIndicator" class="thinking-indicator" aria-live="polite" aria-label="正在思考">
         <span class="thinking-label">正在思考</span>
         <span class="thinking-dots" aria-hidden="true">
           <i></i>
@@ -78,9 +122,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
+  ChevronDownOutline,
   CheckmarkCircleOutline,
   CloseCircleOutline,
   RefreshOutline,
@@ -98,7 +143,13 @@ interface ChatProgressStep {
 
 const props = withDefaults(
   defineProps<{
-    msg: { role: string; content: string; citations?: KnowledgeCitation[] }
+    msg: {
+      role: string
+      content: string
+      reasoning?: string
+      reasoningEnabled?: boolean
+      citations?: KnowledgeCitation[]
+    }
     live?: boolean
     steps?: ChatProgressStep[]
     completedSteps?: number
@@ -116,27 +167,50 @@ const emit = defineEmits<{
   (event: 'open-citation', citation: KnowledgeCitation): void
 }>()
 
+const reasoningExpanded = ref(props.live)
+
 const formattedContent = computed(() => renderMarkdownContent(props.msg.content || ''))
+const formattedReasoning = computed(() => renderMarkdownContent(props.msg.reasoning || ''))
 
 const showStepsPanel = computed(
   () => props.msg.role !== 'user' && (props.steps.length > 0 || (props.live && props.showLoadingStep))
 )
 
+const showReasoningPanel = computed(
+  () =>
+    props.msg.role !== 'user' &&
+    (Boolean(props.msg.reasoning?.trim()) || (props.live && props.msg.reasoningEnabled && !props.msg.content))
+)
+
 const showThinkingIndicator = computed(
-  () => props.live && props.msg.role !== 'user' && !props.msg.content && props.steps.length === 0
+  () =>
+    props.live &&
+    props.msg.role !== 'user' &&
+    !props.msg.content &&
+    props.steps.length === 0 &&
+    !showReasoningPanel.value
 )
 
-const showMessageBubble = computed(
-  () => Boolean(formattedContent.value) || showThinkingIndicator.value || showCitations.value
-)
-
-const showCursor = computed(() => props.live && Boolean(props.msg.content))
 const showCitations = computed(
   () => props.msg.role !== 'user' && Array.isArray(props.msg.citations) && props.msg.citations.length > 0
 )
 
+const showMessageBubble = computed(
+  () =>
+    Boolean(formattedContent.value) ||
+    showThinkingIndicator.value ||
+    showReasoningPanel.value ||
+    showCitations.value
+)
+
+const showCursor = computed(() => props.live && Boolean(props.msg.content))
+
 const openCitation = (citation: KnowledgeCitation) => {
   emit('open-citation', citation)
+}
+
+const toggleReasoning = () => {
+  reasoningExpanded.value = !reasoningExpanded.value
 }
 </script>
 
@@ -306,6 +380,119 @@ const openCitation = (citation: KnowledgeCitation) => {
   color: var(--primary-color-strong);
 }
 
+.reasoning-panel {
+  margin-bottom: 14px;
+  padding: 2px 0 0;
+}
+
+.reasoning-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.18s ease;
+}
+
+.reasoning-toggle:hover {
+  color: var(--primary-color-strong);
+}
+
+.reasoning-toggle-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  width: auto;
+}
+
+.reasoning-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.reasoning-arrow {
+  display: inline-flex;
+  color: currentColor;
+  font-size: 14px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.reasoning-arrow.expanded {
+  transform: rotate(0deg);
+}
+
+.reasoning-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 6px;
+}
+
+.reasoning-stream-head {
+  display: grid;
+  grid-template-columns: 18px minmax(0, auto);
+  align-items: center;
+  column-gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reasoning-stream-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+}
+
+.thinking-glyph {
+  width: 18px;
+  height: 18px;
+}
+
+.reasoning-stream-label {
+  line-height: 1;
+}
+
+.reasoning-card {
+  margin-left: 28px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--background-muted);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.reasoning-card :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.reasoning-card :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.reasoning-waiting,
+.thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .message-sources {
   margin-top: 16px;
   padding-top: 14px;
@@ -365,16 +552,6 @@ const openCitation = (citation: KnowledgeCitation) => {
 .cursor-blink {
   color: var(--primary-color);
   animation: blink 1s infinite;
-}
-
-.thinking-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
 }
 
 .thinking-label {

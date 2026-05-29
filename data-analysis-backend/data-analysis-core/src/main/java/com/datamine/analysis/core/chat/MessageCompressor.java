@@ -2,17 +2,20 @@ package com.datamine.analysis.core.chat;
 
 import com.datamine.analysis.common.entity.ChatSession;
 import com.datamine.analysis.common.repository.ChatSessionRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -21,8 +24,9 @@ public class MessageCompressor {
 
     private static final int MIN_MESSAGES_TO_COMPRESS = 5;
     private static final String SUMMARY_PREFIX = "之前的对话摘要：";
+    private static final String SUMMARY_SYSTEM_PROMPT = "请用简洁的语言总结以下对话内容，保留关键信息，例如数据库名、表名、查询条件和分析结论，控制在 200 字以内。";
 
-    private final ChatClientFactory chatClientFactory;
+    private final ChatModelFactory chatModelFactory;
     private final PersistentChatMemory chatMemory;
     private final ChatSessionRepository chatSessionRepository;
 
@@ -49,7 +53,8 @@ public class MessageCompressor {
         String existingSummary = getExistingSummary(sessionId);
         StringBuilder summaryBuilder = new StringBuilder();
         if (existingSummary != null && !existingSummary.isEmpty()) {
-            summaryBuilder.append("之前的对话摘要：\n")
+            summaryBuilder.append(SUMMARY_PREFIX)
+                    .append('\n')
                     .append(existingSummary)
                     .append("\n\n");
         }
@@ -64,12 +69,11 @@ public class MessageCompressor {
         }
 
         try {
-            ChatClient chatClient = chatClientFactory.getChatClient();
-            String summary = chatClient.prompt()
-                    .system("请用简洁的语言总结以下对话内容，保留关键信息，如数据库名、表名、查询条件、分析结论等，控制在 200 字以内。")
-                    .user(summaryBuilder.toString())
-                    .call()
-                    .content();
+            ChatModel chatModel = chatModelFactory.getChatModel();
+            String summary = chatModel.call(new Prompt(List.of(
+                    new SystemMessage(SUMMARY_SYSTEM_PROMPT),
+                    new UserMessage(summaryBuilder.toString())
+            ))).getResult().getOutput().getText();
 
             if (summary == null || summary.isBlank()) {
                 summary = "暂无可用摘要。";
@@ -103,15 +107,15 @@ public class MessageCompressor {
 
     private void replaceMessages(String sessionId, List<Message> compressed) {
         chatSessionRepository.findById(sessionId).ifPresent(session -> {
-            List<java.util.Map<String, String>> serialized = new ArrayList<>();
+            List<Map<String, String>> serialized = new ArrayList<>();
             for (Message message : compressed) {
-                serialized.add(java.util.Map.of(
+                serialized.add(Map.of(
                         "role", message.getMessageType().getValue().toLowerCase(),
                         "content", message.getText()
                 ));
             }
             try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                ObjectMapper mapper = new ObjectMapper();
                 session.setMessages(mapper.writeValueAsString(serialized));
                 chatSessionRepository.save(session);
             } catch (Exception e) {

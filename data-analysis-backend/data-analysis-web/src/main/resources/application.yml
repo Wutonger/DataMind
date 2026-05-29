@@ -21,14 +21,6 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:sk-your-key}
-      chat:
-        options:
-          model: gpt-4o
-          temperature: 0.7
-
 server:
   port: 8080
 

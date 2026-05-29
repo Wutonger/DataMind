@@ -33,6 +33,7 @@ export interface AgentEvent {
   type: string
   data: {
     content?: string
+    reasoning?: string
     intent?: string
     steps?: AgentStep[]
     stepId?: string
@@ -44,6 +45,7 @@ export interface AgentEvent {
     token?: string
     message?: string
     citations?: KnowledgeCitation[]
+    reasoningEnabled?: boolean
     runId?: string
     workflowRunId?: string
     sessionId?: string

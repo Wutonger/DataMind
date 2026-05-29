@@ -54,6 +54,7 @@ public class PersistentChatMemory implements ChatMemory {
     public void addWithSteps(String conversationId,
                              Message message,
                              List<Map<String, Object>> steps,
+                             String reasoning,
                              List<KnowledgeCitationDTO> citations) {
         ChatSession session = chatSessionRepository.findById(conversationId)
                 .orElseGet(() -> {
@@ -70,6 +71,9 @@ public class PersistentChatMemory implements ChatMemory {
         msgMap.put("content", message.getText());
         if (steps != null && !steps.isEmpty()) {
             msgMap.put("steps", steps);
+        }
+        if (reasoning != null && !reasoning.isBlank()) {
+            msgMap.put("reasoning", reasoning);
         }
         if (citations != null && !citations.isEmpty()) {
             msgMap.put("citations", citations);

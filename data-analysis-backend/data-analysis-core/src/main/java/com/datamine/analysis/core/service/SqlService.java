@@ -2,7 +2,7 @@ package com.datamine.analysis.core.service;
 
 import com.datamine.analysis.agent.model.SqlExecutionResult;
 import com.datamine.analysis.agent.orchestrator.AssistantAgentOrchestrator;
-import com.datamine.analysis.core.chat.ChatClientFactory;
+import com.datamine.analysis.core.chat.ChatModelFactory;
 import com.datamine.analysis.mcp.client.McpClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,7 +13,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SqlService {
 
-    private final ChatClientFactory chatClientFactory;
+    private final ChatModelFactory chatModelFactory;
     private final AssistantAgentOrchestrator assistantAgentOrchestrator;
     private final McpClient mcpClient;
 
@@ -25,7 +25,7 @@ public class SqlService {
         SqlExecutionResult result = assistantAgentOrchestrator.generateSql(
                 connectionId,
                 question,
-                chatClientFactory.getChatClient()
+                chatModelFactory.getChatModel()
         );
         return Map.of(
                 "sql", result.sql(),

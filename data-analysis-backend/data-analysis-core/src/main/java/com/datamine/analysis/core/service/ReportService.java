@@ -4,7 +4,7 @@ import com.datamine.analysis.agent.model.ReportExecutionResult;
 import com.datamine.analysis.agent.orchestrator.AssistantAgentOrchestrator;
 import com.datamine.analysis.common.entity.Report;
 import com.datamine.analysis.common.repository.ReportRepository;
-import com.datamine.analysis.core.chat.ChatClientFactory;
+import com.datamine.analysis.core.chat.ChatModelFactory;
 import com.datamine.analysis.core.export.ExcelExporter;
 import com.datamine.analysis.core.export.PdfExporter;
 import com.datamine.analysis.mcp.client.McpClient;
@@ -24,7 +24,7 @@ import java.util.Map;
 public class ReportService {
 
     private final ReportRepository reportRepository;
-    private final ChatClientFactory chatClientFactory;
+    private final ChatModelFactory chatModelFactory;
     private final McpClient mcpClient;
     private final ObjectMapper objectMapper;
     private final ExcelExporter excelExporter;
@@ -60,7 +60,7 @@ public class ReportService {
             ReportExecutionResult result = assistantAgentOrchestrator.generateReport(
                     connectionId,
                     userRequirement,
-                    chatClientFactory.getChatClient()
+                    chatModelFactory.getChatModel()
             );
             return Map.of(
                     "artifactType", result.artifactType(),

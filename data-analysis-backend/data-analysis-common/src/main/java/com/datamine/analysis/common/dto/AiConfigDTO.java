@@ -10,4 +10,6 @@ public class AiConfigDTO {
     private String model;
     private String embeddingModel;
     private Double temperature;
+    private Boolean reasoningEnabled;
+    private String reasoningEffort;
 }

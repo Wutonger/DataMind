@@ -40,7 +40,12 @@
 
             <main class="workspace-shell">
               <div class="workspace-body">
-                <router-view />
+                <router-view v-slot="{ Component, route }">
+                  <keep-alive>
+                    <component v-if="route.meta.keepAlive" :is="Component" />
+                  </keep-alive>
+                  <component v-if="!route.meta.keepAlive" :is="Component" />
+                </router-view>
               </div>
             </main>
           </div>
@@ -91,7 +96,7 @@ type MenuMeta = {
 const menuItems: MenuMeta[] = [
   { key: 'Dashboard', label: '首页', icon: AnalyticsOutline },
   { key: 'Connections', label: '连接管理', icon: LinkOutline },
-  { key: 'Chat', label: '智能问答', icon: ChatbubbleEllipsesOutline },
+  { key: 'Chat', label: '智能执行', icon: ChatbubbleEllipsesOutline },
   { key: 'SqlStudio', label: 'SQL 工作台', icon: TerminalOutline },
   { key: 'Reports', label: '报表中心', icon: BarChartOutline },
   { key: 'Analysis', label: '表结构', icon: GitNetworkOutline },

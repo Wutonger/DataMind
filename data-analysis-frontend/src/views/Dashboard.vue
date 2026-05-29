@@ -7,7 +7,7 @@
             <template v-if="activeConnection">
               当前正在使用
               <span class="dashboard-connection-highlight">{{ activeConnection.name }}</span>
-              ，可以直接查看表分析、SQL 工作台和最近会话。
+              ，可以直接查看表分析、SQL 工作台和最近执行。
             </template>
             <template v-else>
               {{ dashboardSubtitle }}
@@ -49,10 +49,10 @@
       <div class="page-section dashboard-panel">
         <div class="section-head">
           <div class="section-copy">
-            <h3 class="section-title">最近会话</h3>
+            <h3 class="section-title">最近执行</h3>
           </div>
           <div class="section-actions">
-            <n-button tertiary size="small" @click="goToChat">进入问答</n-button>
+            <n-button tertiary size="small" @click="goToChat">进入智能执行</n-button>
           </div>
         </div>
 
@@ -66,7 +66,7 @@
           >
             <div class="dashboard-session-main">
               <span class="dashboard-session-title">{{ formatSessionLabel(index) }}</span>
-              <span class="dashboard-session-note">最近更新的智能问答记录</span>
+              <span class="dashboard-session-note">最近更新的智能执行记录</span>
             </div>
             <span class="dashboard-session-time">
               {{ formatTime(session.updatedAt || session.createdAt) }}
@@ -75,8 +75,8 @@
         </div>
 
         <div v-else class="dashboard-empty">
-          <h4>还没有会话记录</h4>
-          <p>从智能问答开始一次分析后，最近会话会显示在这里。</p>
+          <h4>还没有执行记录</h4>
+          <p>从智能执行发起一次分析后，最近记录会显示在这里。</p>
         </div>
       </div>
 
@@ -222,12 +222,12 @@ const statCards = computed(() => [
   },
   {
     key: 'sessions',
-    label: '会话数量',
+    label: '执行会话',
     value: sessionCount.value,
     meta: activeConnection.value
       ? lastSessionTime.value
         ? `最近更新于 ${formatTime(lastSessionTime.value)}`
-        : '当前连接还没有问答记录'
+        : '当前连接还没有执行记录'
       : '选择连接后显示'
   },
   {

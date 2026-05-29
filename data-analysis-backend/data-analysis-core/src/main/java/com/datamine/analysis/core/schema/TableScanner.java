@@ -5,12 +5,12 @@ import com.datamine.analysis.common.entity.Connection;
 import com.datamine.analysis.common.entity.TableMetadata;
 import com.datamine.analysis.common.repository.TableMetadataRepository;
 import com.datamine.analysis.agent.workflow.WorkflowRunTracker;
-import com.datamine.analysis.core.chat.ChatClientFactory;
+import com.datamine.analysis.core.chat.ChatModelFactory;
 import com.datamine.analysis.core.service.ConnectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -34,7 +34,7 @@ public class TableScanner {
     private final SchemaReader schemaReader;
     private final TableMetadataRepository tableMetadataRepository;
     private final ConnectionService connectionService;
-    private final ChatClientFactory chatClientFactory;
+    private final ChatModelFactory chatModelFactory;
     private final ObjectMapper objectMapper;
     private final WorkflowRunTracker workflowRunTracker;
     private final AssistantAgentOrchestrator assistantAgentOrchestrator;
@@ -153,7 +153,7 @@ public class TableScanner {
                 allColumns.put(tableName, columns);
             }
 
-            descriptions.putAll(resolveTableDescriptions(chatClientFactory.getChatClient(), batchTables, batchColumns));
+            descriptions.putAll(resolveTableDescriptions(chatModelFactory.getChatModel(), batchTables, batchColumns));
 
             Map<String, Object> batchCompletedPayload = createProgressPayload(
                     totalTables,
@@ -215,7 +215,7 @@ public class TableScanner {
         emitProgress(progressListener, "RELATION_ANALYSIS_STARTED", relationStartedPayload);
 
         Map<String, List<Map<String, Object>>> relations = analyzeGlobalRelationsByLlm(
-                chatClientFactory.getChatClient(),
+                chatModelFactory.getChatModel(),
                 tables,
                 allColumns,
                 foreignKeys
@@ -300,7 +300,7 @@ public class TableScanner {
      * 优先复用表注释，只有在表注释缺失时才调用 LLM 生成简短描述，
      * 并且只提供主键、关联字段和少量业务提示字段，避免把整表字段全部发送给模型。
      */
-    private Map<String, String> resolveTableDescriptions(ChatClient chatClient,
+    private Map<String, String> resolveTableDescriptions(ChatModel chatModel,
                                                          List<Map<String, Object>> tables,
                                                          Map<String, List<Map<String, Object>>> allColumns) {
         Map<String, String> resolvedDescriptions = new HashMap<>();
@@ -325,7 +325,7 @@ public class TableScanner {
 
         try {
             Map<String, String> generatedDescriptions =
-                    assistantAgentOrchestrator.generateTableDescriptions(chatClient, tablesNeedingDescription);
+                    assistantAgentOrchestrator.generateTableDescriptions(chatModel, tablesNeedingDescription);
             for (Map<String, Object> tableInfo : tablesNeedingDescription) {
                 String tableName = stringValue(tableInfo.get("tableName"));
                 String generated = generatedDescriptions.get(tableName);
@@ -368,7 +368,7 @@ public class TableScanner {
     }
 
     private Map<String, List<Map<String, Object>>> analyzeGlobalRelationsByLlm(
-            ChatClient chatClient,
+            ChatModel chatModel,
             List<Map<String, Object>> tables,
             Map<String, List<Map<String, Object>>> allColumns,
             List<Map<String, Object>> foreignKeys) {
@@ -411,7 +411,7 @@ public class TableScanner {
 
         try {
             Map<String, List<Map<String, Object>>> parsed = assistantAgentOrchestrator.analyzeGlobalRelations(
-                    chatClient,
+                    chatModel,
                     Map.of("tables", tablePayload)
             );
             return normalizeRelationResult(parsed, tables, allColumns, foreignKeys);

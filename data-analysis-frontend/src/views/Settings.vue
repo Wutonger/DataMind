@@ -69,6 +69,21 @@
                   </n-button>
                 </div>
               </n-form-item>
+              <n-form-item label="深度思考">
+                <div class="settings-toggle-row">
+                  <n-switch v-model:value="aiConfig.reasoningEnabled" />
+                  <span class="settings-toggle-text">
+                    {{ aiConfig.reasoningEnabled ? '已开启' : '已关闭' }}
+                  </span>
+                </div>
+              </n-form-item>
+              <n-form-item v-if="aiConfig.reasoningEnabled" label="思考强度">
+                <n-select
+                  v-model:value="aiConfig.reasoningEffort"
+                  :options="REASONING_EFFORT_OPTIONS"
+                  placeholder="请选择思考强度"
+                />
+              </n-form-item>
             </n-form>
           </div>
 
@@ -94,13 +109,18 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { configApi } from '@/api/config'
 
 const message = useMessage()
 const TEMPERATURE_MIN = 0
 const TEMPERATURE_MAX = 2
 const TEMPERATURE_STEP = 0.1
+const REASONING_EFFORT_OPTIONS = [
+  { label: 'low', value: 'low' },
+  { label: 'medium', value: 'medium' },
+  { label: 'high', value: 'high' }
+]
 
 const aiConfig = ref({
   provider: 'openai',
@@ -108,7 +128,9 @@ const aiConfig = ref({
   apiKey: '',
   model: 'gpt-4o',
   embeddingModel: 'text-embedding-3-small',
-  temperature: 0.7
+  temperature: 0.7,
+  reasoningEnabled: false,
+  reasoningEffort: 'medium'
 })
 
 const saving = ref(false)
@@ -125,6 +147,11 @@ const normalizeTemperature = (value: number | string) => {
 
 const formatTemperature = (value: number) => normalizeTemperature(value).toFixed(1)
 
+const normalizeReasoningEffort = (value: string | undefined | null) => {
+  const effort = (value || '').trim().toLowerCase()
+  return REASONING_EFFORT_OPTIONS.some(option => option.value === effort) ? effort : 'medium'
+}
+
 const adjustTemperature = (delta: number) => {
   aiConfig.value.temperature = normalizeTemperature(aiConfig.value.temperature + delta)
 }
@@ -137,7 +164,9 @@ const loadConfig = async () => {
       ...res.data,
       model: res.data?.model || aiConfig.value.model,
       embeddingModel: res.data?.embeddingModel || aiConfig.value.embeddingModel,
-      temperature: normalizeTemperature(res.data?.temperature ?? aiConfig.value.temperature)
+      temperature: normalizeTemperature(res.data?.temperature ?? aiConfig.value.temperature),
+      reasoningEnabled: Boolean(res.data?.reasoningEnabled),
+      reasoningEffort: normalizeReasoningEffort(res.data?.reasoningEffort || aiConfig.value.reasoningEffort)
     }
   } catch (error) {
     console.error('Failed to load config', error)
@@ -151,7 +180,10 @@ const saveConfig = async () => {
       ...aiConfig.value,
       model: aiConfig.value.model?.trim() || 'gpt-4o',
       embeddingModel: aiConfig.value.embeddingModel?.trim() || 'text-embedding-3-small',
-      temperature: normalizeTemperature(aiConfig.value.temperature)
+      temperature: normalizeTemperature(aiConfig.value.temperature),
+      reasoningEffort: aiConfig.value.reasoningEnabled
+        ? normalizeReasoningEffort(aiConfig.value.reasoningEffort)
+        : 'medium'
     })
     message.success('配置已保存')
   } catch {
@@ -252,6 +284,18 @@ onMounted(() => {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.settings-toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+}
+
+.settings-toggle-text {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (max-width: 960px) {

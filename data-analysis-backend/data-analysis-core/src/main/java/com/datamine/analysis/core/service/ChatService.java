@@ -2,15 +2,15 @@ package com.datamine.analysis.core.service;
 
 import com.datamine.analysis.common.entity.ChatSession;
 import com.datamine.analysis.common.util.SnowflakeIdGenerator;
-import com.datamine.analysis.core.chat.ChatClientFactory;
+import com.datamine.analysis.core.chat.ChatModelFactory;
 import com.datamine.analysis.core.chat.MessageCompressor;
 import com.datamine.analysis.core.chat.PersistentChatMemory;
 import com.datamine.analysis.agent.orchestrator.AssistantAgentOrchestrator;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -21,18 +21,18 @@ import java.util.Map;
 @Service
 public class ChatService {
 
-    private final ChatClientFactory chatClientFactory;
+    private final ChatModelFactory chatModelFactory;
     private final PersistentChatMemory chatMemory;
     private final MessageCompressor messageCompressor;
     private final AssistantAgentOrchestrator assistantAgentOrchestrator;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
 
-    public ChatService(ChatClientFactory chatClientFactory,
+    public ChatService(ChatModelFactory chatModelFactory,
                        PersistentChatMemory chatMemory,
                        MessageCompressor messageCompressor,
                        AssistantAgentOrchestrator assistantAgentOrchestrator,
                        SnowflakeIdGenerator snowflakeIdGenerator) {
-        this.chatClientFactory = chatClientFactory;
+        this.chatModelFactory = chatModelFactory;
         this.chatMemory = chatMemory;
         this.messageCompressor = messageCompressor;
         this.assistantAgentOrchestrator = assistantAgentOrchestrator;
@@ -52,17 +52,19 @@ public class ChatService {
 
         chatMemory.add(finalSessionId, List.of(new UserMessage(userMessage)));
 
-        ChatClient chatClient = chatClientFactory.getChatClient();
+        ChatModel chatModel = chatModelFactory.getChatModel();
         return assistantAgentOrchestrator.orchestrateStream(
                 finalSessionId,
                 connectionId,
                 userMessage,
-                chatClient,
+                chatModel,
                 chatMemory,
+                chatModelFactory.isReasoningEnabled(),
                 result -> chatMemory.addWithSteps(
                         finalSessionId,
                         new AssistantMessage(result.content()),
                         result.steps(),
+                        result.reasoning(),
                         result.citations()
                 )
         )
@@ -95,7 +97,7 @@ public class ChatService {
     }
 
     public void refreshClient() {
-        chatClientFactory.refreshClient();
+        chatModelFactory.refresh();
     }
 
     public MessageCompressor.CompressResult compressHistory(String sessionId) {
