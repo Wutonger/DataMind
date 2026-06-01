@@ -5,96 +5,63 @@
       <span class="message-label">{{ msg.role === 'user' ? '我的问题' : 'DataMind AI' }}</span>
     </div>
 
-    <div v-if="showStepsPanel" class="steps-panel">
-      <div class="steps-header">
-        <span class="steps-title">执行进度</span>
-        <span class="steps-count">{{ completedSteps }}/{{ steps.length }}</span>
-      </div>
+    <div v-if="showThoughtPanel" class="thought-panel">
+      <button type="button" class="thought-toggle" @click="toggleThoughtExpanded">
+        <span class="thought-toggle-main">
+          <span class="thought-title">思考过程</span>
+          <span class="thought-summary" :class="{ 'is-waiting': isAwaitingFirstSignal }">
+            {{ thoughtSummary }}
+          </span>
+        </span>
+        <n-icon class="thought-arrow" :class="{ expanded: thoughtExpanded }">
+          <ChevronDownOutline />
+        </n-icon>
+      </button>
 
-      <div class="steps-list">
-        <div
-          v-for="step in steps"
-          :key="step.id"
-          class="step-row"
-          :class="`status-${step.status.toLowerCase()}`"
-        >
-          <div class="step-status-icon">
-            <n-icon v-if="step.status === 'RUNNING'" class="spin"><RefreshOutline /></n-icon>
-            <n-icon v-else-if="step.status === 'COMPLETED'" class="success"><CheckmarkCircleOutline /></n-icon>
-            <n-icon v-else-if="step.status === 'FAILED'" class="error"><CloseCircleOutline /></n-icon>
-            <n-icon v-else><TimeOutline /></n-icon>
+      <div v-if="showThoughtBody" class="thought-body">
+        <div v-if="timelineItems.length" class="thought-section">
+          <div class="thought-section-head">
+            <span>处理轨迹</span>
           </div>
 
-          <div class="step-main">
-            <span class="step-name">{{ step.name }}</span>
-            <span v-if="step.mergedCount > 1" class="step-merge-count">x{{ step.mergedCount }}</span>
+          <div class="timeline-list">
+            <div
+              v-for="item in timelineItems"
+              :key="item.key"
+              class="timeline-item"
+              :class="`status-${item.status.toLowerCase()}`"
+            >
+              <div class="timeline-indicator">
+                <n-icon v-if="item.status === 'RUNNING'" class="spin"><RefreshOutline /></n-icon>
+                <n-icon v-else-if="item.status === 'COMPLETED'" class="success"><CheckmarkCircleOutline /></n-icon>
+                <n-icon v-else-if="item.status === 'FAILED'" class="error"><CloseCircleOutline /></n-icon>
+                <n-icon v-else><TimeOutline /></n-icon>
+              </div>
+
+              <div class="timeline-main">
+                <div class="timeline-title-row">
+                  <span class="timeline-title">{{ item.label }}</span>
+                  <span v-if="item.count > 1" class="timeline-count">x{{ item.count }}</span>
+                </div>
+                <span v-if="item.description" class="timeline-desc">{{ item.description }}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div v-if="showLoadingStep" class="step-row status-running">
-          <div class="step-status-icon">
-            <n-icon class="spin"><RefreshOutline /></n-icon>
+        <div v-if="showReasoningBlock" class="thought-section">
+          <div class="thought-section-head">
+            <span>详细思考</span>
+            <span v-if="!msg.reasoningEnabled" class="thought-muted">已关闭</span>
           </div>
-          <span class="step-name loading-placeholder">正在思考</span>
+
+          <div v-if="formattedReasoning" class="reasoning-card" v-html="formattedReasoning"></div>
         </div>
       </div>
     </div>
 
     <div v-if="showMessageBubble" class="message-bubble markdown-body">
-      <div v-if="showReasoningPanel" class="reasoning-panel" :class="{ expanded: reasoningExpanded }">
-        <button type="button" class="reasoning-toggle" @click="toggleReasoning">
-          <span class="reasoning-toggle-main">
-            <span class="reasoning-title">思考过程</span>
-            <n-icon class="reasoning-arrow" :class="{ expanded: reasoningExpanded }">
-              <ChevronDownOutline />
-            </n-icon>
-          </span>
-        </button>
-
-        <div v-if="reasoningExpanded" class="reasoning-body">
-          <div class="reasoning-stream-head">
-            <span class="reasoning-stream-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" class="thinking-glyph" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M8 2.2c-2.6 0-4.7 2.1-4.7 4.7 0 .8.2 1.5.5 2.1-.3.4-.4.8-.4 1.3 0 1.3.9 2.4 2.2 2.7.4.8 1.2 1.4 2.2 1.4.6 0 1.2-.2 1.6-.6.4.4 1 .6 1.6.6 1 0 1.8-.6 2.2-1.4 1.3-.3 2.2-1.4 2.2-2.7 0-.5-.1-.9-.4-1.3.3-.6.5-1.3.5-2.1 0-2.6-2.1-4.7-4.7-4.7-.6 0-1.3.2-1.9.5-.6-.3-1.3-.5-1.9-.5Z"
-                  stroke="currentColor"
-                  stroke-width="0.95"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M8.35 4.2v7.6"
-                  stroke="currentColor"
-                  stroke-width="0.95"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </span>
-            <span class="reasoning-stream-label">思考</span>
-          </div>
-
-          <div v-if="formattedReasoning" class="reasoning-card" v-html="formattedReasoning"></div>
-          <div v-else class="reasoning-card reasoning-waiting" aria-live="polite" aria-label="正在思考">
-            <span class="thinking-label">正在思考</span>
-            <span class="thinking-dots" aria-hidden="true">
-              <i></i>
-              <i></i>
-              <i></i>
-            </span>
-          </div>
-        </div>
-      </div>
-
       <div v-if="formattedContent" v-html="formattedContent"></div>
-
-      <div v-else-if="showThinkingIndicator" class="thinking-indicator" aria-live="polite" aria-label="正在思考">
-        <span class="thinking-label">正在思考</span>
-        <span class="thinking-dots" aria-hidden="true">
-          <i></i>
-          <i></i>
-          <i></i>
-        </span>
-      </div>
 
       <div v-if="showCitations" class="message-sources">
         <span class="sources-label">来源</span>
@@ -122,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
   ChevronDownOutline,
@@ -137,8 +104,11 @@ import { renderMarkdownContent } from '@/utils/markdown'
 interface ChatProgressStep {
   id: string
   name: string
+  skill?: string
+  description?: string
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'
   mergedCount: number
+  kind?: 'skill' | 'tool' | 'thinking' | 'finalizing'
 }
 
 const props = withDefaults(
@@ -153,13 +123,11 @@ const props = withDefaults(
     live?: boolean
     steps?: ChatProgressStep[]
     completedSteps?: number
-    showLoadingStep?: boolean
   }>(),
   {
     live: false,
     steps: () => [],
-    completedSteps: 0,
-    showLoadingStep: false
+    completedSteps: 0
   }
 )
 
@@ -167,28 +135,78 @@ const emit = defineEmits<{
   (event: 'open-citation', citation: KnowledgeCitation): void
 }>()
 
-const reasoningExpanded = ref(props.live)
+const thoughtExpanded = ref(false)
+const thoughtInteracted = ref(false)
 
 const formattedContent = computed(() => renderMarkdownContent(props.msg.content || ''))
 const formattedReasoning = computed(() => renderMarkdownContent(props.msg.reasoning || ''))
 
-const showStepsPanel = computed(
-  () => props.msg.role !== 'user' && (props.steps.length > 0 || (props.live && props.showLoadingStep))
+const normalizeLabel = (label: string, kind?: 'skill' | 'tool' | 'thinking' | 'finalizing') => {
+  const value = label.trim()
+  if (!value) {
+    return kind === 'skill' ? '调用技能' : '处理步骤'
+  }
+  if (kind === 'skill') {
+    return value.startsWith('调用') ? value : `调用${value}`
+  }
+  return value
+}
+
+const timelineItems = computed(() =>
+  (props.steps || []).map((step) => ({
+    key: step.id,
+    label: normalizeLabel(step.name || step.skill || '处理中', step.kind),
+    description: step.description || '',
+    status: step.status,
+    count: step.mergedCount,
+    kind: step.kind
+  }))
 )
 
-const showReasoningPanel = computed(
-  () =>
-    props.msg.role !== 'user' &&
-    (Boolean(props.msg.reasoning?.trim()) || (props.live && props.msg.reasoningEnabled && !props.msg.content))
+const toolCount = computed(() => timelineItems.value.filter((item) => item.kind === 'tool').length)
+const skillCount = computed(() => timelineItems.value.filter((item) => item.kind === 'skill').length)
+const activeThinkingItem = computed(() => timelineItems.value.find((item) => item.kind === 'thinking' && item.status === 'RUNNING'))
+const activeFinalizingItem = computed(() =>
+  timelineItems.value.find((item) => item.kind === 'finalizing' && item.status === 'RUNNING')
 )
+const hasThoughtDetails = computed(
+  () => timelineItems.value.length > 0 || Boolean(props.msg.reasoning?.trim())
+)
+const isAwaitingFirstSignal = computed(() => props.live && !hasThoughtDetails.value)
+const showThoughtBody = computed(() => thoughtExpanded.value && hasThoughtDetails.value)
 
-const showThinkingIndicator = computed(
-  () =>
-    props.live &&
-    props.msg.role !== 'user' &&
-    !props.msg.content &&
-    props.steps.length === 0 &&
-    !showReasoningPanel.value
+const thoughtSummary = computed(() => {
+  if (!timelineItems.value.length) {
+    return props.live ? '思考中' : '已完成'
+  }
+
+  if (activeFinalizingItem.value) {
+    return '正在整理回答'
+  }
+
+  if (activeThinkingItem.value) {
+    return toolCount.value || skillCount.value
+      ? `思考中 · 已调用 ${skillCount.value} 个技能、${toolCount.value} 个工具`
+      : '思考中'
+  }
+
+  const runningItem = timelineItems.value.find((item) => item.status === 'RUNNING')
+  if (runningItem) {
+    return `${runningItem.label} · 已调用 ${skillCount.value} 个技能、${toolCount.value} 个工具`
+  }
+
+  const failedItem = timelineItems.value.find((item) => item.status === 'FAILED')
+  if (failedItem) {
+    return `已中断 · ${failedItem.label}`
+  }
+
+  return `已完成 · 已调用 ${skillCount.value} 个技能、${toolCount.value} 个工具`
+})
+
+const showThoughtPanel = computed(() => props.msg.role !== 'user' && (timelineItems.value.length > 0 || props.live))
+
+const showReasoningBlock = computed(
+  () => props.msg.role !== 'user' && Boolean(props.msg.reasoningEnabled) && Boolean(props.msg.reasoning?.trim())
 )
 
 const showCitations = computed(
@@ -198,9 +216,8 @@ const showCitations = computed(
 const showMessageBubble = computed(
   () =>
     Boolean(formattedContent.value) ||
-    showThinkingIndicator.value ||
-    showReasoningPanel.value ||
-    showCitations.value
+    showCitations.value ||
+    props.msg.role === 'user'
 )
 
 const showCursor = computed(() => props.live && Boolean(props.msg.content))
@@ -209,16 +226,32 @@ const openCitation = (citation: KnowledgeCitation) => {
   emit('open-citation', citation)
 }
 
-const toggleReasoning = () => {
-  reasoningExpanded.value = !reasoningExpanded.value
+const toggleThoughtExpanded = () => {
+  thoughtInteracted.value = true
+  thoughtExpanded.value = !thoughtExpanded.value
 }
+
+watch(
+  [() => props.live, hasThoughtDetails],
+  ([live, hasDetails]) => {
+    if (live && !thoughtInteracted.value) {
+      thoughtExpanded.value = hasDetails
+      return
+    }
+
+    if (!live && !thoughtInteracted.value) {
+      thoughtExpanded.value = false
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
 .chat-message {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 22px;
 }
 
@@ -258,102 +291,216 @@ const toggleReasoning = () => {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.steps-panel {
+.thought-panel,
+.message-bubble {
   width: min(100%, 980px);
-  padding: 14px;
-  border-radius: 16px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--border-accent-soft);
 }
 
-.steps-header {
+.thought-panel {
+  padding: 4px 0 0;
+}
+
+.thought-toggle {
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+  transition: color 0.18s ease;
+}
+
+.thought-toggle:hover {
+  color: var(--primary-color-strong);
+}
+
+.thought-toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.thought-title {
+  color: currentColor;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.thought-summary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.thought-summary.is-waiting {
+  color: rgba(108, 114, 132, 0.88);
+  background-image: linear-gradient(
+    90deg,
+    rgba(108, 114, 132, 0.88) 0%,
+    rgba(108, 114, 132, 0.88) 34%,
+    rgba(239, 91, 42, 0.24) 45%,
+    rgba(255, 255, 255, 0.96) 50%,
+    rgba(239, 91, 42, 0.24) 55%,
+    rgba(108, 114, 132, 0.88) 66%,
+    rgba(108, 114, 132, 0.88) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thoughtWave 2.2s linear infinite;
+}
+
+.thought-arrow {
+  display: inline-flex;
+  color: currentColor;
+  font-size: 14px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.thought-arrow.expanded {
+  transform: rotate(0deg);
+}
+
+.thought-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 0 0 0 2px;
+}
+
+.thought-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thought-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.steps-title {
-  color: var(--text-color);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.steps-count {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--surface-active);
-  color: var(--primary-color-strong);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.steps-list {
+.thought-muted {
+  color: var(--text-muted);
+}
+
+.timeline-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.step-row {
+.timeline-item {
   display: flex;
-  align-items: center;
   gap: 10px;
-  min-height: 40px;
-  padding: 0 12px;
-  border-radius: 12px;
-  background: var(--background-elevated);
-  border: 1px solid var(--line-soft);
+  min-height: 46px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(23, 31, 58, 0.08);
 }
 
-.step-status-icon {
+.timeline-indicator {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: var(--text-secondary);
   font-size: 16px;
 }
 
-.step-status-icon .spin {
+.timeline-indicator .spin {
   color: var(--primary-color);
   animation: spin 1s linear infinite;
 }
 
-.step-status-icon .success {
+.timeline-indicator .success {
   color: var(--success-color);
 }
 
-.step-status-icon .error {
+.timeline-indicator .error {
   color: var(--error-color);
 }
 
-.step-main {
+.timeline-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.step-name {
+.timeline-title {
   color: var(--text-color);
   font-size: 13px;
+  font-weight: 700;
 }
 
-.step-merge-count {
-  min-width: 26px;
+.timeline-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.timeline-count {
+  flex: none;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--surface-active);
+  background: rgba(239, 91, 42, 0.08);
   color: var(--primary-color-strong);
   font-size: 11px;
   font-weight: 700;
-  text-align: center;
 }
 
-.loading-placeholder {
-  color: var(--text-muted);
+.timeline-item.status-running {
+  border-color: rgba(239, 91, 42, 0.18);
+}
+
+.timeline-item.status-failed {
+  border-color: rgba(197, 72, 63, 0.2);
+  background: rgba(255, 247, 247, 0.96);
+}
+
+.reasoning-card {
+  padding: 14px 16px;
+  border: 1px solid rgba(23, 31, 58, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
 }
 
 .message-bubble {
-  width: min(100%, 980px);
   padding: 18px 20px;
   border-radius: 18px;
   background: var(--background-elevated);
@@ -364,133 +511,6 @@ const toggleReasoning = () => {
   width: min(82%, 760px);
   background: var(--surface-subtle);
   border-color: var(--border-accent-soft);
-}
-
-.chat-message.user .message-bubble :deep(code) {
-  background: var(--surface-active);
-  color: var(--primary-color-strong);
-}
-
-.chat-message.user .message-bubble :deep(blockquote) {
-  border-left-color: var(--border-accent-strong);
-  background: var(--surface-active);
-}
-
-.chat-message.user .message-bubble :deep(a) {
-  color: var(--primary-color-strong);
-}
-
-.reasoning-panel {
-  margin-bottom: 14px;
-  padding: 2px 0 0;
-}
-
-.reasoning-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  text-align: left;
-  transition: color 0.18s ease;
-}
-
-.reasoning-toggle:hover {
-  color: var(--primary-color-strong);
-}
-
-.reasoning-toggle-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  width: auto;
-}
-
-.reasoning-title {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.reasoning-arrow {
-  display: inline-flex;
-  color: currentColor;
-  font-size: 14px;
-  transform: rotate(-90deg);
-  transition: transform 0.18s ease;
-}
-
-.reasoning-arrow.expanded {
-  transform: rotate(0deg);
-}
-
-.reasoning-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 0 6px;
-}
-
-.reasoning-stream-head {
-  display: grid;
-  grid-template-columns: 18px minmax(0, auto);
-  align-items: center;
-  column-gap: 10px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.reasoning-stream-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  color: var(--text-secondary);
-}
-
-.thinking-glyph {
-  width: 18px;
-  height: 18px;
-}
-
-.reasoning-stream-label {
-  line-height: 1;
-}
-
-.reasoning-card {
-  margin-left: 28px;
-  padding: 14px 16px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--background-muted);
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.reasoning-card :deep(p:first-child) {
-  margin-top: 0;
-}
-
-.reasoning-card :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.reasoning-waiting,
-.thinking-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
 }
 
 .message-sources {
@@ -529,18 +549,13 @@ const toggleReasoning = () => {
   text-decoration-color: var(--border-accent-strong);
   cursor: pointer;
   text-underline-offset: 3px;
-  transition:
-    color 0.18s ease,
-    text-decoration-color 0.18s ease;
 }
 
 .source-link:hover {
   color: var(--primary-color);
-  text-decoration-color: currentColor;
 }
 
 .source-name {
-  font-size: 13px;
   font-weight: 700;
 }
 
@@ -552,34 +567,6 @@ const toggleReasoning = () => {
 .cursor-blink {
   color: var(--primary-color);
   animation: blink 1s infinite;
-}
-
-.thinking-label {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.thinking-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.thinking-dots i {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.35;
-  animation: thinkingPulse 1.2s ease-in-out infinite;
-}
-
-.thinking-dots i:nth-child(2) {
-  animation-delay: 0.14s;
-}
-
-.thinking-dots i:nth-child(3) {
-  animation-delay: 0.28s;
 }
 
 @keyframes blink {
@@ -602,24 +589,24 @@ const toggleReasoning = () => {
   }
 }
 
-@keyframes thinkingPulse {
-  0%,
-  80%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
+@keyframes thoughtWave {
+  0% {
+    background-position: 140% 50%;
   }
-  40% {
-    opacity: 1;
-    transform: translateY(-1px);
+  100% {
+    background-position: -40% 50%;
   }
 }
 
 @media (max-width: 820px) {
+  .thought-panel,
   .message-bubble,
-  .steps-panel,
   .chat-message.user .message-bubble {
     width: 100%;
+  }
+
+  .thought-toggle-main {
+    align-items: flex-start;
   }
 
   .sources-links {

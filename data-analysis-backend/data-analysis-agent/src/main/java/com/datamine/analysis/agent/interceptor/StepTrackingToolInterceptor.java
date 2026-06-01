@@ -5,31 +5,33 @@ import com.alibaba.cloud.ai.graph.agent.interceptor.ToolCallRequest;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ToolCallResponse;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ToolInterceptor;
 import com.datamine.analysis.agent.model.ToolExecutionRecord;
+import com.datamine.analysis.agent.orchestrator.ChatProcessStepTracker;
 import com.datamine.analysis.agent.orchestrator.AssistantAgentOrchestrator;
 import com.datamine.analysis.agent.tool.ToolProgressDescriptor;
 import com.datamine.analysis.agent.tool.ToolProgressResolver;
-import com.datamine.analysis.agent.workflow.WorkflowRunTracker;
 import com.datamine.analysis.agent.tool.ToolResultProcessor;
+import com.datamine.analysis.agent.workflow.WorkflowRunTracker;
 import com.datamine.analysis.common.dto.knowledge.KnowledgeCitationDTO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
- * 负责拦截工具调用，并把工具执行过程转换成可展示的步骤事件。
+ * 拦截工具调用，并把开始、完成、失败转换成统一的步骤事件。
  */
 public final class StepTrackingToolInterceptor extends ToolInterceptor {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
+    private static final String STEP_KIND_SKILL = "skill";
 
     private final Consumer<String> eventConsumer;
     private final List<Map<String, Object>> executedSteps;
@@ -41,6 +43,7 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
     private final Consumer<ToolExecutionRecord> toolResultConsumer;
     private final WorkflowRunTracker workflowRunTracker;
     private final String workflowRunId;
+    private final ChatProcessStepTracker chatProcessStepTracker;
 
     public StepTrackingToolInterceptor(Consumer<String> eventConsumer,
                                        List<Map<String, Object>> executedSteps,
@@ -51,7 +54,8 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
                                        BiFunction<String, Map<String, Object>, String> eventJsonBuilder,
                                        Consumer<ToolExecutionRecord> toolResultConsumer,
                                        WorkflowRunTracker workflowRunTracker,
-                                       String workflowRunId) {
+                                       String workflowRunId,
+                                       ChatProcessStepTracker chatProcessStepTracker) {
         this.eventConsumer = eventConsumer;
         this.executedSteps = executedSteps;
         this.collectedCitations = collectedCitations;
@@ -62,6 +66,7 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         this.toolResultConsumer = toolResultConsumer;
         this.workflowRunTracker = workflowRunTracker;
         this.workflowRunId = workflowRunId;
+        this.chatProcessStepTracker = chatProcessStepTracker;
     }
 
     @Override
@@ -69,10 +74,6 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         return "datamind-step-tracking";
     }
 
-    /**
-     * 拦截每一次工具调用，把开始、完成、失败都转换成统一步骤事件。
-     * 同时在成功时抽取知识库引用，供最终回答一起返回。
-     */
     @Override
     public ToolCallResponse interceptToolCall(ToolCallRequest request, ToolCallHandler handler) {
         String stepId = StringUtils.hasText(request.getToolCallId())
@@ -82,16 +83,17 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         ToolProgressDescriptor descriptor = resolveDescriptor(request);
         String displayName = descriptor.displayName();
         String description = descriptor.description();
-        String agentId = resolveAgentId(toolName);
+        String stepKind = descriptor.kind();
+        String agentId = resolveAgentId();
         String owner = resolveOwner(agentId);
 
-        // 前端进度面板直接依赖这份 step 结构，字段保持稳定，便于后续合并与回放。
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("id", stepId);
         step.put("name", displayName);
         step.put("skill", resolveStepSkillName(toolName, request.getArguments()));
         step.put("displayName", displayName);
         step.put("description", description);
+        step.put("kind", stepKind);
         step.put("status", "RUNNING");
         synchronized (executedSteps) {
             executedSteps.add(step);
@@ -107,18 +109,24 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
                 description,
                 List.of(toolName)
         );
-        workflowRunTracker.addTimeline(workflowRunId, stepId, owner, "开始执行 " + displayName);
+        workflowRunTracker.addTimeline(workflowRunId, stepId, owner, "开始执行" + displayName);
 
+        // 先结束“正在思考”，再进入具体工具/技能步骤，前端时间线会更自然。
+        if (chatProcessStepTracker != null) {
+            chatProcessStepTracker.beforeToolExecution();
+        }
         eventConsumer.accept(eventJsonBuilder.apply("STEP_STARTED", Map.of(
                 "stepId", stepId,
                 "stepName", resolveEventStepName(toolName, request.getArguments(), displayName),
                 "displayName", displayName,
-                "description", description
+                "description", description,
+                "stepKind", stepKind
         )));
 
         try {
             ToolCallResponse response = handler.call(request);
             publishToolResult(stepId, toolName, response.getResult(), response.isError());
+
             String result = toolResultProcessor.summarize(response.getResult());
             step.put("status", response.isError() ? "FAILED" : "COMPLETED");
             step.put("result", result);
@@ -132,42 +140,50 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
                 workflowRunTracker.addTimeline(workflowRunId, stepId, owner, displayName + " 执行失败");
                 eventConsumer.accept(eventJsonBuilder.apply("STEP_FAILED", Map.of(
                         "stepId", stepId,
-                        "error", result
+                        "error", result,
+                        "stepKind", stepKind
                 )));
             } else {
                 workflowRunTracker.completeStep(workflowRunId, stepId, result, List.of(toolName));
                 workflowRunTracker.addTimeline(workflowRunId, stepId, owner, displayName + " 执行完成");
                 eventConsumer.accept(eventJsonBuilder.apply("STEP_COMPLETED", Map.of(
                         "stepId", stepId,
-                        "result", result
+                        "result", result,
+                        "stepKind", stepKind
                 )));
+            }
+            // 工具成功后回到新的思考阶段，等待模型决定下一步。
+            if (chatProcessStepTracker != null && !response.isError()) {
+                chatProcessStepTracker.afterToolExecution();
             }
 
             return response;
-        } catch (RuntimeException e) {
-            String errorMessage = summarizeError(e);
+        } catch (RuntimeException exception) {
+            String errorMessage = summarizeError(exception);
             publishToolResult(stepId, toolName, errorMessage, true);
             step.put("status", "FAILED");
             step.put("result", errorMessage);
             workflowRunTracker.failStep(workflowRunId, stepId, errorMessage, List.of(toolName));
             workflowRunTracker.addTimeline(workflowRunId, stepId, owner, displayName + " 执行失败");
-            eventConsumer.accept(eventJsonBuilder.apply("STEP_FAILED", Map.of("stepId", stepId, "error", errorMessage)));
-            throw e;
+            eventConsumer.accept(eventJsonBuilder.apply("STEP_FAILED", Map.of(
+                    "stepId", stepId,
+                    "error", errorMessage,
+                    "stepKind", stepKind
+            )));
+            // 即使工具失败，也让模型有机会继续思考是否需要兜底回答。
+            if (chatProcessStepTracker != null) {
+                chatProcessStepTracker.afterToolExecution();
+            }
+            throw exception;
         }
     }
 
-    /**
-     * SkillsAgentHook 提供的 read_skill 不在业务 Tool 列表中，这里补一层专门映射，
-     * 让前端步骤能看到具体读取的是哪个 skill。
-     */
     private ToolProgressDescriptor resolveDescriptor(ToolCallRequest request) {
         String toolName = request.getToolName();
         if ("read_skill".equalsIgnoreCase(toolName)) {
             return resolveReadSkillDescriptor(request.getArguments());
         }
-        return toolProgressDescriptors.getOrDefault(
-                toolName,
-                toolProgressResolver.resolveByName(toolName));
+        return toolProgressDescriptors.getOrDefault(toolName, toolProgressResolver.resolveByName(toolName));
     }
 
     private ToolProgressDescriptor resolveReadSkillDescriptor(String arguments) {
@@ -175,7 +191,8 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         String friendlySkillName = resolveFriendlySkillName(skillName);
         return new ToolProgressDescriptor(
                 "调用" + friendlySkillName,
-                "加载" + friendlySkillName + "并准备后续处理"
+                "加载" + friendlySkillName + "并准备后续处理",
+                STEP_KIND_SKILL
         );
     }
 
@@ -226,7 +243,7 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         };
     }
 
-    private String resolveAgentId(String toolName) {
+    private String resolveAgentId() {
         return AssistantAgentOrchestrator.ASSISTANT_AGENT;
     }
 
@@ -234,9 +251,6 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         return AssistantAgentOrchestrator.ASSISTANT_OWNER;
     }
 
-    /**
-     * 工具失败时同样只向外暴露收敛后的短错误，避免底层包装异常直接透出。
-     */
     private String summarizeError(Throwable error) {
         Throwable current = error;
         while (current != null && current.getCause() != null && current.getCause() != current) {

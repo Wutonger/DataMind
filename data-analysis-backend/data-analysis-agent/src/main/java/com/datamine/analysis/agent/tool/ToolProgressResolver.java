@@ -12,8 +12,11 @@ import java.util.Map;
 @Component
 public class ToolProgressResolver {
 
+    private static final String KIND_TOOL = "tool";
+    private static final String KIND_SKILL = "skill";
+
     /**
-     * Build user-friendly progress descriptors for the currently visible tools.
+     * 为当前可见工具构建统一的展示文案与分类。
      */
     public Map<String, ToolProgressDescriptor> buildDescriptors(List<ToolCallback> toolCallbacks) {
         Map<String, ToolProgressDescriptor> descriptors = new LinkedHashMap<>();
@@ -25,17 +28,17 @@ public class ToolProgressResolver {
     }
 
     /**
-     * Fallback display text when only the tool name is known.
+     * 当只有工具名时，提供兜底展示信息。
      */
     public ToolProgressDescriptor resolveByName(String toolName) {
-        return new ToolProgressDescriptor(resolveDisplayName(toolName, ""), "");
+        return new ToolProgressDescriptor(resolveDisplayName(toolName, ""), "", resolveKind(toolName));
     }
 
     private ToolProgressDescriptor resolve(ToolDefinition toolDefinition) {
         String toolName = toolDefinition.name();
         String description = normalizeDescription(toolDefinition.description());
         String displayName = resolveDisplayName(toolName, description);
-        return new ToolProgressDescriptor(displayName, description);
+        return new ToolProgressDescriptor(displayName, description, resolveKind(toolName));
     }
 
     private String normalizeDescription(String description) {
@@ -44,16 +47,14 @@ public class ToolProgressResolver {
         }
 
         String normalized = description.trim();
-        while (normalized.endsWith("。") || normalized.endsWith("，") || normalized.endsWith(";")) {
+        while (normalized.endsWith("。") || normalized.endsWith("；") || normalized.endsWith(";")) {
             normalized = normalized.substring(0, normalized.length() - 1).trim();
         }
         return normalized;
     }
 
     private String resolveDisplayName(String toolName, String description) {
-        //驼峰转下划线命名规则
         String normalizedName = ToolNameNormalizer.canonicalize(toolName);
-        //转换为对用户友好的展示格式
         return switch (normalizedName) {
             case "db_list_tables" -> "读取数据表列表";
             case "db_get_columns" -> "读取字段信息";
@@ -70,8 +71,12 @@ public class ToolProgressResolver {
                 if (normalizedName.startsWith("db_") || normalizedName.startsWith("db")) {
                     yield "执行数据库操作";
                 }
-                yield toolName == null ? "执行处理步骤" : toolName.replace('_', ' ');
+                yield StringUtils.hasText(toolName) ? toolName.replace('_', ' ') : "处理步骤";
             }
         };
+    }
+
+    private String resolveKind(String toolName) {
+        return "read_skill".equals(ToolNameNormalizer.canonicalize(toolName)) ? KIND_SKILL : KIND_TOOL;
     }
 }

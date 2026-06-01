@@ -24,6 +24,7 @@ public final class ConnectionAwareToolCallback implements StateAwareToolCallback
     private final Long connectionId;
     private final ObjectMapper objectMapper;
     private final ToolExecutionSupport toolExecutionSupport;
+    private final ToolDefinition visibleToolDefinition;
     private final boolean injectConnectionId;
 
     public ConnectionAwareToolCallback(ToolCallback delegate,
@@ -35,11 +36,12 @@ public final class ConnectionAwareToolCallback implements StateAwareToolCallback
         this.objectMapper = objectMapper;
         this.toolExecutionSupport = toolExecutionSupport;
         this.injectConnectionId = requiresConnectionId(delegate.getToolDefinition(), objectMapper);
+        this.visibleToolDefinition = sanitizeToolDefinition(delegate.getToolDefinition(), objectMapper, this.injectConnectionId);
     }
 
     @Override
     public ToolDefinition getToolDefinition() {
-        return delegate.getToolDefinition();
+        return visibleToolDefinition;
     }
 
     @Override
@@ -158,6 +160,48 @@ public final class ConnectionAwareToolCallback implements StateAwareToolCallback
             return schema.path("properties").has("connectionId");
         } catch (Exception ignored) {
             return false;
+        }
+    }
+
+    /**
+     * 对模型隐藏 connectionId，让它只关注真正需要推理的业务参数；
+     * 执行时仍由当前包装类自动补齐连接上下文。
+     */
+    private static ToolDefinition sanitizeToolDefinition(ToolDefinition toolDefinition,
+                                                         ObjectMapper objectMapper,
+                                                         boolean injectConnectionId) {
+        if (!injectConnectionId) {
+            return toolDefinition;
+        }
+
+        try {
+            JsonNode schema = objectMapper.readTree(toolDefinition.inputSchema()).deepCopy();
+            JsonNode propertiesNode = schema.path("properties");
+            if (propertiesNode.isObject()) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) propertiesNode).remove("connectionId");
+            }
+
+            JsonNode requiredNode = schema.path("required");
+            if (requiredNode.isArray()) {
+                com.fasterxml.jackson.databind.node.ArrayNode requiredArray =
+                        (com.fasterxml.jackson.databind.node.ArrayNode) requiredNode;
+                for (int index = requiredArray.size() - 1; index >= 0; index--) {
+                    JsonNode item = requiredArray.get(index);
+                    if (item != null && "connectionId".equals(item.asText())) {
+                        requiredArray.remove(index);
+                    }
+                }
+            }
+
+            return ToolDefinition.builder()
+                    .name(toolDefinition.name())
+                    .description(toolDefinition.description())
+                    .inputSchema(objectMapper.writeValueAsString(schema))
+                    .build();
+        } catch (Exception ex) {
+            log.warn("Failed to sanitize tool definition. toolName={}, reason={}",
+                    toolDefinition.name(), ex.getMessage());
+            return toolDefinition;
         }
     }
 

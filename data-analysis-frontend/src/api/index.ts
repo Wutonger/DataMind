@@ -25,6 +25,7 @@ export interface AgentStep {
   name: string
   skill: string
   description: string
+  kind?: 'skill' | 'tool' | 'thinking' | 'finalizing'
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'
   result?: string
 }
@@ -40,6 +41,7 @@ export interface AgentEvent {
     stepName?: string
     displayName?: string
     description?: string
+    stepKind?: 'skill' | 'tool' | 'thinking' | 'finalizing'
     result?: string
     error?: string
     token?: string

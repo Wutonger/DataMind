@@ -51,7 +51,6 @@ public class AssistantAgentOrchestrator {
     public static final String ASSISTANT_AGENT = "assistant";
     public static final String ASSISTANT_OWNER = "AssistantAgent";
     public static final String ROUTE_MODE = "SINGLE_AGENT";
-
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -75,6 +74,7 @@ public class AssistantAgentOrchestrator {
             List<Map<String, Object>> executedSteps = Collections.synchronizedList(new ArrayList<>());
             List<KnowledgeCitationDTO> collectedCitations = Collections.synchronizedList(new ArrayList<>());
             AtomicReference<OverAllState> latestState = new AtomicReference<>();
+            AtomicReference<ChatProcessStepTracker> chatProcessStepTrackerRef = new AtomicReference<>();
             StringBuilder responseBuilder = new StringBuilder();
             StringBuilder reasoningBuilder = new StringBuilder();
             String workflowRunId = workflowRunTracker.startRun("chat", connectionId, summarizeTitle(userInput));
@@ -106,6 +106,18 @@ public class AssistantAgentOrchestrator {
                         "title", summarizeTitle(userInput),
                         "reasoningEnabled", reasoningEnabled
                 )));
+                // 聊天过程中的“思考 / 整理回答”单独由过程跟踪器负责，避免前端继续猜测状态。
+                ChatProcessStepTracker chatProcessStepTracker = new ChatProcessStepTracker(
+                        workflowRunId,
+                        ASSISTANT_AGENT,
+                        ASSISTANT_OWNER,
+                        workflowRunTracker,
+                        executedSteps,
+                        eventConsumer,
+                        this::toJsonEvent
+                );
+                chatProcessStepTrackerRef.set(chatProcessStepTracker);
+                chatProcessStepTracker.startInitialThinking();
 
                 List<Message> inputMessages = loadConversationMessages(conversationId, userInput, chatMemory);
                 Agent assistantAgent = buildChatAgent(
@@ -116,7 +128,8 @@ public class AssistantAgentOrchestrator {
                         eventConsumer,
                         executedSteps,
                         collectedCitations,
-                        workflowRunId
+                        workflowRunId,
+                        chatProcessStepTracker
                 );
 
                 RunnableConfig runnableConfig = RunnableConfig.builder()
@@ -133,11 +146,16 @@ public class AssistantAgentOrchestrator {
                                         responseBuilder,
                                         reasoningBuilder,
                                         reasoningEnabled,
+                                        chatProcessStepTracker,
                                         eventConsumer),
                                 error -> {
                                     String message = summarizeError(error);
                                     List<Map<String, Object>> finalSteps = copySteps(executedSteps);
                                     List<KnowledgeCitationDTO> finalCitations = copyCitations(collectedCitations);
+                                    ChatProcessStepTracker tracker = chatProcessStepTrackerRef.get();
+                                    if (tracker != null) {
+                                        tracker.failActiveStep(message);
+                                    }
                                     log.error("Chat workflow failed. sessionId={}", conversationId, error);
                                     eventConsumer.accept(toJsonEvent("WORKFLOW_COMPLETED", Map.of(
                                             "runId", workflowRunId,
@@ -162,16 +180,20 @@ public class AssistantAgentOrchestrator {
                                     );
                                 },
                                 () -> {
-                                    String fullResponse = extractFinalResponse(latestState.get())
-                                            .filter(StringUtils::hasText)
-                                            .orElseGet(responseBuilder::toString);
+                                    // 聊天场景优先以真实流式输出为准，避免结束时被 state 中较晚但不完整的消息覆盖。
+                                    String fullResponse = StringUtils.hasText(responseBuilder)
+                                            ? responseBuilder.toString()
+                                            : extractFinalResponse(latestState.get()).orElse("");
                                     String reasoning = reasoningBuilder.toString().trim();
 
                                     if (!StringUtils.hasText(fullResponse)) {
                                         fullResponse = "抱歉，我暂时没有生成有效回复。";
                                     }
 
+                                    String inputSummary = summarizeText(userInput);
+                                    String outputSummary = summarizeText(fullResponse);
                                     List<KnowledgeCitationDTO> finalCitations = copyCitations(collectedCitations);
+                                    chatProcessStepTracker.recordFinalizingStep(finalStepId, outputSummary);
                                     List<Map<String, Object>> finalSteps = copySteps(executedSteps);
                                     log.info("Chat workflow completed. sessionId={}, responseLength={}, citations={}",
                                             conversationId, fullResponse.length(), finalCitations.size());
@@ -196,11 +218,13 @@ public class AssistantAgentOrchestrator {
                                             setupStepId,
                                             finalStepId,
                                             conversationId,
-                                            userInput,
+                                            inputSummary,
+                                            outputSummary,
                                             fullResponse,
                                             finalSteps,
                                             reasoning,
                                             finalCitations,
+                                            chatProcessStepTracker,
                                             completionCallback
                                     );
                                 });
@@ -209,6 +233,10 @@ public class AssistantAgentOrchestrator {
                 String message = summarizeError(error);
                 List<Map<String, Object>> finalSteps = copySteps(executedSteps);
                 List<KnowledgeCitationDTO> finalCitations = copyCitations(collectedCitations);
+                ChatProcessStepTracker tracker = chatProcessStepTrackerRef.get();
+                if (tracker != null) {
+                    tracker.failActiveStep(message);
+                }
                 log.error("Chat workflow setup failed. sessionId={}", conversationId, error);
                 eventConsumer.accept(toJsonEvent("WORKFLOW_COMPLETED", Map.of(
                         "runId", workflowRunId,
@@ -494,7 +522,8 @@ public class AssistantAgentOrchestrator {
                                  Consumer<String> eventConsumer,
                                  List<Map<String, Object>> executedSteps,
                                  List<KnowledgeCitationDTO> collectedCitations,
-                                 String workflowRunId) {
+                                 String workflowRunId,
+                                 ChatProcessStepTracker chatProcessStepTracker) {
         AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createChatToolset(connectionId, userInput);
         StepTrackingToolInterceptor interceptor = buildTrackingInterceptor(
                 eventConsumer,
@@ -503,7 +532,8 @@ public class AssistantAgentOrchestrator {
                 toolset.sceneCallbacks(),
                 this::toJsonEvent,
                 null,
-                workflowRunId
+                workflowRunId,
+                chatProcessStepTracker
         );
 
         return buildReactAgent(
@@ -535,7 +565,8 @@ public class AssistantAgentOrchestrator {
                 toolset.sceneCallbacks(),
                 (type, data) -> "",
                 null,
-                workflowRunId
+                workflowRunId,
+                null
         );
 
         return buildReactAgent(PromptConstant.SQL_AGENT_PROMPT, chatModel, toolset.baseCallbacks(), interceptor, false, toolset.skillHook());
@@ -561,7 +592,8 @@ public class AssistantAgentOrchestrator {
                 toolset.sceneCallbacks(),
                 (type, data) -> "",
                 toolResultConsumer,
-                workflowRunId
+                workflowRunId,
+                null
         );
 
         return buildReactAgent(PromptConstant.REPORT_AGENT_PROMPT, chatModel, toolset.baseCallbacks(), interceptor, false, toolset.skillHook());
@@ -573,7 +605,8 @@ public class AssistantAgentOrchestrator {
                                                                  List<ToolCallback> toolCallbacks,
                                                                  BiFunction<String, Map<String, Object>, String> eventJsonBuilder,
                                                                  Consumer<ToolExecutionRecord> toolResultConsumer,
-                                                                 String workflowRunId) {
+                                                                 String workflowRunId,
+                                                                 ChatProcessStepTracker chatProcessStepTracker) {
         Map<String, ToolProgressDescriptor> toolProgressDescriptors = toolProgressResolver.buildDescriptors(toolCallbacks);
         return new StepTrackingToolInterceptor(
                 eventConsumer,
@@ -585,7 +618,8 @@ public class AssistantAgentOrchestrator {
                 eventJsonBuilder,
                 toolResultConsumer,
                 workflowRunTracker,
-                workflowRunId
+                workflowRunId,
+                chatProcessStepTracker
         );
     }
 
@@ -670,6 +704,7 @@ public class AssistantAgentOrchestrator {
                                   StringBuilder responseBuilder,
                                   StringBuilder reasoningBuilder,
                                   boolean reasoningEnabled,
+                                  ChatProcessStepTracker chatProcessStepTracker,
                                   Consumer<String> eventConsumer) {
         if (!(nodeOutput instanceof StreamingOutput<?> streamingOutput)) {
             return;
@@ -692,6 +727,9 @@ public class AssistantAgentOrchestrator {
             return;
         }
 
+        if (chatProcessStepTracker != null) {
+            chatProcessStepTracker.markAnswerStreamingStarted();
+        }
         responseBuilder.append(chunk);
         eventConsumer.accept(toJsonEvent("ANSWER_DELTA", Map.of("token", chunk)));
     }
@@ -795,14 +833,19 @@ public class AssistantAgentOrchestrator {
                                             String setupStepId,
                                             String finalStepId,
                                             String conversationId,
-                                            String userInput,
+                                            String inputSummary,
+                                            String outputSummary,
                                             String fullResponse,
                                             List<Map<String, Object>> finalSteps,
                                             String reasoning,
                                             List<KnowledgeCitationDTO> finalCitations,
+                                            ChatProcessStepTracker chatProcessStepTracker,
                                             Consumer<ChatExecutionResult> completionCallback) {
         CompletableFuture.runAsync(() -> {
             try {
+                if (chatProcessStepTracker != null) {
+                    chatProcessStepTracker.persistFinalizingStep(finalStepId, inputSummary, outputSummary);
+                }
                 workflowRunTracker.completeStep(
                         workflowRunId,
                         setupStepId,
@@ -810,24 +853,6 @@ public class AssistantAgentOrchestrator {
                         List.of("routeMode=" + ROUTE_MODE)
                 );
                 workflowRunTracker.addTimeline(workflowRunId, setupStepId, ASSISTANT_OWNER, "已进入回答生成阶段");
-                workflowRunTracker.startStep(
-                        workflowRunId,
-                        finalStepId,
-                        ASSISTANT_AGENT,
-                        ASSISTANT_OWNER,
-                        "整理最终回答",
-                        "Final Synthesis",
-                        summarizeText(userInput),
-                        List.of("final_response")
-                );
-                workflowRunTracker.addTimeline(workflowRunId, finalStepId, ASSISTANT_OWNER, "开始整理最终回答");
-                workflowRunTracker.completeStep(
-                        workflowRunId,
-                        finalStepId,
-                        summarizeText(fullResponse),
-                        List.of("final_response")
-                );
-                workflowRunTracker.addTimeline(workflowRunId, finalStepId, ASSISTANT_OWNER, "最终回答已生成");
                 workflowRunTracker.completeRun(workflowRunId, ROUTE_MODE);
             } catch (Exception e) {
                 log.error("Failed to persist chat workflow completion. sessionId={}, workflowRunId={}",

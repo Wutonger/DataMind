@@ -24,7 +24,6 @@
             :live="messageItem.live"
             :steps="messageItem.mergedSteps"
             :completed-steps="messageItem.completedSteps"
-            :show-loading-step="messageItem.showLoadingStep"
             @open-citation="openCitationPreview"
           />
         </template>
@@ -207,7 +206,10 @@ interface ConversationMessage {
 interface MergedAgentStep {
   id: string
   name: string
+  skill: string
+  description: string
   status: AgentStep['status']
+  kind: 'skill' | 'tool' | 'thinking' | 'finalizing'
   mergedCount: number
 }
 
@@ -215,7 +217,6 @@ interface DisplayMessage extends ConversationMessage {
   live: boolean
   mergedSteps: MergedAgentStep[]
   completedSteps: number
-  showLoadingStep: boolean
 }
 
 const appStore = useAppStore()
@@ -229,7 +230,6 @@ const inputMessage = ref('')
 const loading = ref(false)
 const compressing = ref(false)
 const latestWorkflowRunId = ref('')
-const showIntermediateThinkingStep = ref(false)
 const chatContainer = ref<HTMLElement | null>(null)
 const showKnowledgePreviewModal = ref(false)
 const knowledgePreviewLoading = ref(false)
@@ -268,8 +268,29 @@ const mergeStepStatus = (
   return nextStatus
 }
 
+const resolveStepKind = (step: AgentStep): 'skill' | 'tool' | 'thinking' | 'finalizing' => {
+  if (step.kind) {
+    return step.kind
+  }
+
+  const fingerprint = `${step.skill || ''} ${step.name || ''}`.trim().toLowerCase()
+
+  if (
+    fingerprint.includes('skill') ||
+    fingerprint.includes('技能') ||
+    fingerprint.includes('read_skill') ||
+    fingerprint.includes('readskill')
+  ) {
+    return 'skill'
+  }
+
+  return 'tool'
+}
+
 const cloneSteps = (steps?: AgentStep[]) => steps?.map((step) => ({ ...step }))
 const cloneReasoning = (reasoning?: string) => reasoning || ''
+const resolveReasoningEnabled = (messageItem: any) =>
+  Boolean(messageItem?.reasoningEnabled ?? messageItem?.reasoning?.trim())
 const cloneCitations = (citations?: KnowledgeCitation[]) =>
   citations?.map((citation) => ({ ...citation, metadata: citation.metadata ? { ...citation.metadata } : undefined }))
 
@@ -282,9 +303,12 @@ const mergeAdjacentSteps = (steps?: AgentStep[]): MergedAgentStep[] => {
 
   for (const step of steps) {
     const stepName = step.name?.trim() || step.description?.trim() || '处理中'
+    const stepSkill = step.skill?.trim() || stepName
+    const stepDescription = step.description?.trim() || ''
+    const stepKind = resolveStepKind(step)
     const lastStep = merged[merged.length - 1]
 
-    if (lastStep && lastStep.name === stepName) {
+    if (lastStep && lastStep.name === stepName && lastStep.kind === stepKind) {
       lastStep.mergedCount += 1
       lastStep.status = mergeStepStatus(lastStep.status, step.status)
       continue
@@ -293,7 +317,10 @@ const mergeAdjacentSteps = (steps?: AgentStep[]): MergedAgentStep[] => {
     merged.push({
       id: step.id,
       name: stepName,
+      skill: stepSkill,
+      description: stepDescription,
       status: step.status,
+      kind: stepKind,
       mergedCount: 1
     })
   }
@@ -304,44 +331,16 @@ const mergeAdjacentSteps = (steps?: AgentStep[]): MergedAgentStep[] => {
 const countFinishedSteps = (steps: MergedAgentStep[]) =>
   steps.filter((step) => isStepFinished(step.status)).length
 
-const mergedCurrentSteps = computed(() => mergeAdjacentSteps(currentAssistantMsg.value?.steps))
-
-const legacyShowLoadingStep = computed(() => {
-  if (!currentAssistantMsg.value || !loading.value) {
-    return false
-  }
-
-  if (mergedCurrentSteps.value.length === 0) {
-    return false
-  }
-
-  // 只要当前仍在流式处理中，且暂时没有运行中的步骤，就补一个“正在思考”节点，
-  // 这样用户能看到模型正在决定下一步，而不是误以为流程停住了。
-  return mergedCurrentSteps.value.every((step) => isStepFinished(step.status))
-})
-
-void legacyShowLoadingStep
-
-const showLoadingStep = computed(() => {
-  if (!currentAssistantMsg.value || !loading.value) {
-    return false
-  }
-
-  return showIntermediateThinkingStep.value
-})
-
 const toDisplayMessage = (
   messageItem: ConversationMessage,
-  options: { live?: boolean; showLoadingStep?: boolean } = {}
+  options: { live?: boolean } = {}
 ): DisplayMessage => {
   const mergedSteps = mergeAdjacentSteps(messageItem.steps)
-
   return {
     ...messageItem,
     live: Boolean(options.live),
     mergedSteps,
-    completedSteps: countFinishedSteps(mergedSteps),
-    showLoadingStep: Boolean(options.showLoadingStep)
+    completedSteps: countFinishedSteps(mergedSteps)
   }
 }
 
@@ -361,8 +360,7 @@ const renderedMessages = computed<DisplayMessage[]>(() => {
   return [
     ...historyMessages,
     toDisplayMessage(liveMessage, {
-      live: true,
-      showLoadingStep: showLoadingStep.value
+      live: true
     })
   ]
 })
@@ -587,7 +585,6 @@ const initSession = () => {
   messages.value = []
   currentAssistantMsg.value = null
   latestWorkflowRunId.value = ''
-  showIntermediateThinkingStep.value = false
 }
 
 const openWorkflowPage = () => {
@@ -653,6 +650,7 @@ const loadSessionHistory = async (targetSessionId: string) => {
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content || msg.text || '',
         reasoning: msg.reasoning || '',
+        reasoningEnabled: resolveReasoningEnabled(msg),
         steps: msg.steps || undefined,
         citations: msg.citations || undefined
       }))
@@ -683,13 +681,13 @@ const finalizeAssistantMessage = () => {
       role: 'assistant',
       content: assistantMessage.content,
       reasoning: cloneReasoning(assistantMessage.reasoning),
+      reasoningEnabled: Boolean(assistantMessage.reasoningEnabled),
       steps: cloneSteps(assistantMessage.steps),
       citations: cloneCitations(assistantMessage.citations)
     })
   }
 
   currentAssistantMsg.value = null
-  showIntermediateThinkingStep.value = false
 }
 
 const bindSessionIdFromEvent = (event: AgentEvent) => {
@@ -739,7 +737,6 @@ const sendMessage = async () => {
     steps: [],
     citations: []
   }
-  showIntermediateThinkingStep.value = false
   scrollToBottom()
 
   try {
@@ -810,7 +807,6 @@ const handleAgentEvent = (event: AgentEvent) => {
       break
 
     case 'STEP_STARTED': {
-      showIntermediateThinkingStep.value = false
       const steps = currentAssistantMsg.value.steps || []
       const existing = steps.find((step) => step.id === event.data.stepId)
       const stepName =
@@ -823,6 +819,7 @@ const handleAgentEvent = (event: AgentEvent) => {
       if (existing) {
         existing.name = stepName
         existing.description = stepDescription
+        existing.kind = event.data.stepKind || existing.kind
         existing.status = 'RUNNING'
       } else {
         steps.push({
@@ -830,6 +827,7 @@ const handleAgentEvent = (event: AgentEvent) => {
           name: stepName,
           skill: event.data.stepName || stepName,
           description: stepDescription,
+          kind: event.data.stepKind || 'tool',
           status: 'RUNNING'
         })
       }
@@ -846,11 +844,6 @@ const handleAgentEvent = (event: AgentEvent) => {
           step.result = event.data.result
         }
       })
-      showIntermediateThinkingStep.value = Boolean(
-        loading.value &&
-          currentAssistantMsg.value.steps?.length &&
-          currentAssistantMsg.value.steps.every((step) => isStepFinished(step.status))
-      )
       scrollToBottom()
       break
 
@@ -861,22 +854,15 @@ const handleAgentEvent = (event: AgentEvent) => {
           step.result = event.data.error
         }
       })
-      showIntermediateThinkingStep.value = Boolean(
-        loading.value &&
-          currentAssistantMsg.value.steps?.length &&
-          currentAssistantMsg.value.steps.every((step) => isStepFinished(step.status))
-      )
       scrollToBottom()
       break
 
     case 'THINKING':
-      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.reasoning = `${currentAssistantMsg.value.reasoning || ''}${event.data.token || ''}`
       scrollToBottom()
       break
 
     case 'ANSWER_DELTA':
-      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content += event.data.token || ''
       scrollToBottom()
       break
@@ -885,7 +871,6 @@ const handleAgentEvent = (event: AgentEvent) => {
 
     case 'FINAL_RESPONSE':
       bindSessionIdFromEvent(event)
-      showIntermediateThinkingStep.value = false
       currentAssistantMsg.value.content = event.data.content || currentAssistantMsg.value.content || ''
       currentAssistantMsg.value.reasoning = event.data.reasoning || currentAssistantMsg.value.reasoning || ''
       currentAssistantMsg.value.reasoningEnabled = Boolean(
