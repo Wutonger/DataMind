@@ -31,16 +31,17 @@ public class ReportService {
     private final PdfExporter pdfExporter;
     private final AssistantAgentOrchestrator assistantAgentOrchestrator;
 
-    public List<Report> listReports(Long connectionId) {
-        return reportRepository.findByConnectionId(connectionId);
+    public List<Report> listReports(Long userId, Long connectionId) {
+        return reportRepository.findByUserIdAndConnectionIdOrderByUpdatedAtDesc(userId, connectionId);
     }
 
-    public Report getReport(Long id) {
-        return reportRepository.findById(id).orElse(null);
+    public Report getReport(Long userId, Long id) {
+        return reportRepository.findByIdAndUserId(id, userId).orElse(null);
     }
 
-    public Report updateReport(Long id, Report updated) {
-        Report report = reportRepository.findById(id).orElseThrow();
+    public Report updateReport(Long userId, Long id, Report updated) {
+        Report report = reportRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("报表不存在: " + id));
         report.setName(updated.getName());
         report.setConfig(updated.getConfig());
         report.setChartType(updated.getChartType());
@@ -48,16 +49,16 @@ public class ReportService {
         return reportRepository.save(report);
     }
 
-    public void deleteReport(Long id) {
-        reportRepository.deleteById(id);
+    public void deleteReport(Long userId, Long id) {
+        Report report = reportRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("报表不存在: " + id));
+        reportRepository.delete(report);
     }
 
-    /**
-     * 报表中心的 AI 生成功能统一走 Agent 编排层，由 Agent 自主选择图表或文档报告技能。
-     */
-    public Map<String, Object> generateReportArtifact(Long connectionId, String userRequirement) {
+    public Map<String, Object> generateReportArtifact(Long userId, Long connectionId, String userRequirement) {
         try {
             ReportExecutionResult result = assistantAgentOrchestrator.generateReport(
+                    userId,
                     connectionId,
                     userRequirement,
                     chatModelFactory.getChatModel()
@@ -83,20 +84,18 @@ public class ReportService {
 
     public byte[] exportExcel(Long connectionId, String sql, String sheetName) throws IOException {
         Map<String, Object> result = mcpClient.dbExecute(connectionId, sql);
-        List<Map<String, Object>> rows = extractRows(result);
-        return excelExporter.export(rows, sheetName);
+        return excelExporter.export(extractRows(result), sheetName);
     }
 
     public byte[] exportPdf(Long connectionId, String sql, String title) throws IOException {
         Map<String, Object> result = mcpClient.dbExecute(connectionId, sql);
-        List<Map<String, Object>> rows = extractRows(result);
-        return pdfExporter.export(rows, title);
+        return pdfExporter.export(extractRows(result), title);
     }
 
     @SuppressWarnings("unchecked")
-    public byte[] exportPdf(Long reportId, Long connectionId, String sql, String title) throws IOException {
+    public byte[] exportPdf(Long userId, Long reportId, Long connectionId, String sql, String title) throws IOException {
         if (reportId != null) {
-            Report report = reportRepository.findById(reportId).orElse(null);
+            Report report = reportRepository.findByIdAndUserId(reportId, userId).orElse(null);
             if (report != null) {
                 Map<String, Object> config = parseConfig(report.getConfig());
                 if (isMarkdownReport(report, config)) {
@@ -137,7 +136,6 @@ public class ReportService {
         if (!StringUtils.hasText(config)) {
             return Map.of();
         }
-
         try {
             return objectMapper.readValue(config, Map.class);
         } catch (Exception e) {

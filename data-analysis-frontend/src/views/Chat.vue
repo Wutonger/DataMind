@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NInput, NModal, NSpin, useMessage } from 'naive-ui'
 import { ContractOutline, GitNetworkOutline, PaperPlaneOutline, TrashOutline } from '@vicons/ionicons5'
@@ -241,6 +241,13 @@ let messageIdSeed = 0
 let historyAutoScrollTimer: number | null = null
 
 const createMessageId = (prefix: string) => `${prefix}-${Date.now()}-${messageIdSeed++}`
+
+const clearHistoryAutoScrollTimer = () => {
+  if (historyAutoScrollTimer) {
+    window.clearTimeout(historyAutoScrollTimer)
+    historyAutoScrollTimer = null
+  }
+}
 
 const isStepFinished = (status: AgentStep['status']) =>
   status === 'COMPLETED' || status === 'FAILED' || status === 'SKIPPED'
@@ -558,9 +565,7 @@ const scrollHistoryToBottom = () => {
     applyScroll()
     window.requestAnimationFrame(applyScroll)
 
-    if (historyAutoScrollTimer) {
-      window.clearTimeout(historyAutoScrollTimer)
-    }
+    clearHistoryAutoScrollTimer()
 
     historyAutoScrollTimer = window.setTimeout(() => {
       applyScroll()
@@ -577,10 +582,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const initSession = () => {
-  if (historyAutoScrollTimer) {
-    window.clearTimeout(historyAutoScrollTimer)
-    historyAutoScrollTimer = null
-  }
+  clearHistoryAutoScrollTimer()
   sessionId.value = ''
   messages.value = []
   currentAssistantMsg.value = null
@@ -960,6 +962,23 @@ onMounted(() => {
   } else {
     initSession()
   }
+})
+
+onActivated(() => {
+  if (!hasVisibleMessages.value && !loading.value && !currentAssistantMsg.value) {
+    return
+  }
+
+  if (loading.value || currentAssistantMsg.value) {
+    scrollToBottom('auto')
+    return
+  }
+
+  scrollHistoryToBottom()
+})
+
+onBeforeUnmount(() => {
+  clearHistoryAutoScrollTimer()
 })
 </script>
 

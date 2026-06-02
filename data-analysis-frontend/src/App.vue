@@ -3,7 +3,9 @@
     <n-message-provider>
       <n-dialog-provider>
         <n-notification-provider>
-          <div class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+          <router-view v-if="route.meta.hideShell" />
+
+          <div v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
             <aside class="sidebar-panel" :class="{ collapsed: sidebarCollapsed }">
               <div class="sidebar-topbar">
                 <div class="brand-block" :class="{ collapsed: sidebarCollapsed }">
@@ -39,12 +41,56 @@
             </aside>
 
             <main class="workspace-shell">
+              <header class="workspace-topbar">
+                <div class="workspace-meta">
+                  <span class="workspace-label">当前连接</span>
+                  <div class="workspace-connection">
+                    <n-select
+                      v-model:value="selectedConnectionId"
+                      :options="connectionOptions"
+                      :loading="appStore.loadingConnections"
+                      clearable
+                      filterable
+                      placeholder="请选择连接"
+                      size="medium"
+                      @update:value="handleConnectionChange"
+                    />
+                  </div>
+                </div>
+
+                <div class="workspace-user">
+                  <div class="user-chip">
+                    <span class="user-name">{{ authStore.displayName }}</span>
+                    <span class="user-role">{{ authStore.isAdmin ? '管理员' : '成员' }}</span>
+                  </div>
+                  <n-tooltip trigger="hover" placement="bottom-end">
+                    <template #trigger>
+                      <n-button
+                        quaternary
+                        circle
+                        size="small"
+                        class="logout-button"
+                        aria-label="退出登录"
+                        @click="handleLogout"
+                      >
+                        <template #icon>
+                          <n-icon :size="16">
+                            <LogOutOutline />
+                          </n-icon>
+                        </template>
+                      </n-button>
+                    </template>
+                    退出登录
+                  </n-tooltip>
+                </div>
+              </header>
+
               <div class="workspace-body">
-                <router-view v-slot="{ Component, route }">
+                <router-view v-slot="{ Component, route: currentRoute }">
                   <keep-alive>
-                    <component v-if="route.meta.keepAlive" :is="Component" />
+                    <component v-if="currentRoute.meta.keepAlive" :is="Component" />
                   </keep-alive>
-                  <component v-if="!route.meta.keepAlive" :is="Component" />
+                  <component v-if="!currentRoute.meta.keepAlive" :is="Component" />
                 </router-view>
               </div>
             </main>
@@ -56,66 +102,107 @@
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
+import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AnalyticsOutline,
   BarChartOutline,
+  ChatbubbleEllipsesOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
-  ChatbubbleEllipsesOutline,
   GitNetworkOutline,
-  LinkOutline,
   LibraryOutline,
+  LinkOutline,
+  LogOutOutline,
+  PeopleOutline,
   SettingsOutline,
   ShareSocialOutline,
   TerminalOutline
 } from '@vicons/ionicons5'
 import {
+  NButton,
   NConfigProvider,
   NDialogProvider,
   NIcon,
   NMenu,
   NMessageProvider,
-  NNotificationProvider
+  NNotificationProvider,
+  NSelect,
+  NTooltip
 } from 'naive-ui'
-import type { Component } from 'vue'
 import type { GlobalThemeOverrides, MenuOption } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
-
-const router = useRouter()
-const route = useRoute()
-const appStore = useAppStore()
+import { useAuthStore } from '@/stores/auth'
 
 type MenuMeta = {
   key: string
   label: string
   icon: Component
+  adminOnly?: boolean
 }
+
+const router = useRouter()
+const route = useRoute()
+const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const menuItems: MenuMeta[] = [
   { key: 'Dashboard', label: '首页', icon: AnalyticsOutline },
   { key: 'Connections', label: '连接管理', icon: LinkOutline },
   { key: 'Chat', label: '智能执行', icon: ChatbubbleEllipsesOutline },
   { key: 'SqlStudio', label: 'SQL 工作台', icon: TerminalOutline },
-  { key: 'Reports', label: '报表中心', icon: BarChartOutline },
   { key: 'Analysis', label: '表结构', icon: GitNetworkOutline },
-  { key: 'Knowledge', label: '知识库', icon: LibraryOutline },
+  { key: 'Reports', label: '报表中心', icon: BarChartOutline },
   { key: 'Workflow', label: '执行链路', icon: ShareSocialOutline },
-  { key: 'Settings', label: '系统设置', icon: SettingsOutline }
+  { key: 'Knowledge', label: '知识库', icon: LibraryOutline, adminOnly: true },
+  { key: 'Settings', label: '系统设置', icon: SettingsOutline, adminOnly: true },
+  { key: 'Users', label: '用户与权限', icon: PeopleOutline, adminOnly: true }
 ]
 
 const renderIcon = (icon: Component) => () => h(NIcon, { size: 18 }, { default: () => h(icon) })
 
-const savedKey = localStorage.getItem('activeMenuKey') || String(route.name || 'Dashboard')
-const activeKey = ref(savedKey)
+const activeKey = ref(localStorage.getItem('activeMenuKey') || String(route.name || 'Dashboard'))
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
+const menuDisplayOrder = [
+  'Dashboard',
+  'Connections',
+  'Chat',
+  'SqlStudio',
+  'Analysis',
+  'Reports',
+  'Workflow',
+  'Knowledge',
+  'Users',
+  'Settings'
+]
 
-const menuOptions: MenuOption[] = menuItems.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: renderIcon(item.icon)
-}))
+const menuOptions = computed<MenuOption[]>(() =>
+  menuItems
+    .filter((item) => !item.adminOnly || authStore.isAdmin)
+    .slice()
+    .sort(
+      (left, right) =>
+        menuDisplayOrder.indexOf(left.key) - menuDisplayOrder.indexOf(right.key)
+    )
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      icon: renderIcon(item.icon)
+    }))
+)
+
+const connectionOptions = computed(() =>
+  appStore.accessibleConnections.map((item) => ({
+    label: item.name,
+    value: item.id
+  }))
+)
+
+const selectedConnectionId = computed({
+  get: () => appStore.currentConnectionId,
+  set: (value) => appStore.setCurrentConnection(value)
+})
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -159,40 +246,32 @@ const themeOverrides: GlobalThemeOverrides = {
     itemIconColorChildActive: '#b4542d',
     itemIconColorChildActiveHover: '#b4542d'
   },
-  Tabs: {
-    colorSegment: '#fff7f2',
-    tabColorSegment: 'rgba(239, 91, 42, 0.12)',
-    tabTextColorSegment: '#8f6b5a',
-    tabTextColorHoverSegment: '#b4542d',
-    tabTextColorActiveSegment: '#b4542d',
-    barColor: '#ef5b2a',
-    tabTextColorActiveLine: '#ef5b2a',
-    tabTextColorHoverLine: '#ef5b2a',
-    tabTextColorActiveBar: '#ef5b2a',
-    tabTextColorHoverBar: '#ef5b2a',
-    tabTextColorActiveCard: '#ef5b2a',
-    tabTextColorHoverCard: '#ef5b2a'
-  },
-  Card: {
-    borderRadius: '18px'
-  },
-  Input: {
-    borderRadius: '14px'
-  },
   Select: {
     peers: {
       InternalSelection: {
         borderRadius: '14px'
       }
     }
-  },
-  Modal: {
-    borderRadius: '18px'
   }
 }
 
-watch(activeKey, (newVal) => {
-  localStorage.setItem('activeMenuKey', newVal)
+const bootstrapWorkspace = async () => {
+  if (!authStore.isLoggedIn) {
+    appStore.reset()
+    return
+  }
+
+  try {
+    await authStore.ensureSession()
+    await appStore.loadAccessibleConnections(authStore.user?.lastConnectionId ?? null)
+  } catch (error) {
+    console.error('Failed to bootstrap workspace', error)
+    appStore.reset()
+  }
+}
+
+watch(activeKey, (value) => {
+  localStorage.setItem('activeMenuKey', value)
 })
 
 watch(sidebarCollapsed, (value) => {
@@ -201,23 +280,46 @@ watch(sidebarCollapsed, (value) => {
 
 watch(
   () => route.name,
-  (newVal) => {
-    if (newVal) {
-      activeKey.value = String(newVal)
+  (value) => {
+    if (value) {
+      activeKey.value = String(value)
     }
   }
 )
 
+watch(
+  () => authStore.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn) {
+      bootstrapWorkspace()
+      return
+    }
+    appStore.reset()
+  }
+)
+
 onMounted(() => {
-  appStore.loadActiveConnection()
+  bootstrapWorkspace()
 })
 
 const handleMenuSelect = (key: string) => {
-  router.push({ name: key })
+  if (route.name !== key) {
+    router.push({ name: key })
+  }
 }
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+const handleConnectionChange = async (value: number | null) => {
+  await appStore.selectConnection(value)
+}
+
+const handleLogout = async () => {
+  await authStore.logout()
+  appStore.reset()
+  await router.replace({ name: 'Login' })
 }
 </script>
 
@@ -252,9 +354,6 @@ const toggleSidebar = () => {
   box-shadow: var(--card-shadow);
   overflow: auto;
   scrollbar-gutter: stable;
-  transition:
-    padding 0.22s ease,
-    border-radius 0.22s ease;
 }
 
 .sidebar-panel.collapsed {
@@ -272,11 +371,10 @@ const toggleSidebar = () => {
 
 .brand-block {
   display: flex;
-  justify-content: flex-start;
-  gap: 0;
-  align-items: center;
-  min-width: 0;
   flex: 1;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .brand-block.collapsed {
@@ -303,16 +401,10 @@ const toggleSidebar = () => {
 
 .brand-block.collapsed .brand-copy h1 {
   font-size: 22px;
-  letter-spacing: -0.04em;
 }
 
 .sidebar-toggle {
-  flex: 0 0 auto;
   color: var(--text-secondary);
-}
-
-.sidebar-toggle:hover {
-  color: var(--primary-color-strong);
 }
 
 .sidebar-section-label {
@@ -325,11 +417,89 @@ const toggleSidebar = () => {
 }
 
 .workspace-shell {
-  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  min-width: 0;
   min-height: 0;
   height: calc(100vh - 32px);
+}
+
+.workspace-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 20px;
+  background: var(--background-elevated);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--card-shadow);
+}
+
+.workspace-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.workspace-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.workspace-connection {
+  min-width: 280px;
+}
+
+.workspace-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--background-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.user-name {
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.user-role {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.logout-button {
+  width: 36px;
+  height: 36px;
+  color: var(--text-secondary);
+}
+
+.logout-button:hover {
+  color: var(--primary-color-strong);
 }
 
 .workspace-body {
@@ -343,17 +513,12 @@ const toggleSidebar = () => {
   background: transparent !important;
 }
 
-.sidebar-panel.collapsed :deep(.n-menu) {
-  width: 100%;
-}
-
 .sidebar-panel :deep(.n-menu-item-content) {
   position: relative;
   margin: 4px 0;
   min-height: 46px;
   border-radius: 14px !important;
   overflow: hidden;
-  transition: background 0.18s ease;
 }
 
 .sidebar-panel :deep(.n-menu-item-content::before) {
@@ -372,11 +537,6 @@ const toggleSidebar = () => {
   color: #b47a62;
 }
 
-.sidebar-panel.collapsed :deep(.n-menu-item-content) {
-  justify-content: center;
-  margin: 6px 0;
-}
-
 .sidebar-panel :deep(.n-menu-item-content:hover) {
   background: var(--surface-hover);
 }
@@ -390,20 +550,13 @@ const toggleSidebar = () => {
   background: var(--surface-active);
 }
 
-.sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected:hover) {
-  background: var(--surface-active-strong);
-}
-
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header),
 .sidebar-panel :deep(.n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon) {
   color: var(--primary-color-strong);
 }
 
 @media (max-width: 920px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
+  .app-shell,
   .app-shell.sidebar-collapsed {
     grid-template-columns: 1fr;
   }
@@ -411,28 +564,21 @@ const toggleSidebar = () => {
   .sidebar-panel {
     position: relative;
     top: 0;
-    align-self: stretch;
     height: auto;
     max-height: none;
-    min-height: auto;
-    overflow: visible;
   }
 
-  .workspace-shell {
-    min-height: auto;
-    height: auto;
+  .workspace-topbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .sidebar-panel.collapsed {
-    padding-left: 16px;
-    padding-right: 16px;
+  .workspace-connection {
+    min-width: 0;
   }
-}
 
-@media (max-width: 680px) {
-  .app-shell {
-    padding: 12px;
-    gap: 12px;
+  .workspace-user {
+    justify-content: space-between;
   }
 }
 </style>

@@ -31,9 +31,14 @@ public final class PromptConstant {
             如果业务定义、指标口径、字段含义或报表规则可能影响 SQL 的正确性，先查询知识库，再结合 schema 相关能力确认表名和字段名。
             不要猜测不存在的表或字段；如果对数据库方言没有把握，优先选择更保守、更通用的写法。
             无论逻辑多复杂，都只能返回一条 SQL，不要输出多条以分号分隔的语句；如果需要分步处理，请改写成单条查询，必要时使用子查询或 CTE。
+            生成候选 SQL 后，必须先调用 db_execute 做一次只读校验：
+            1. 对 SELECT 或 WITH 查询，优先执行 EXPLAIN + 候选 SQL；
+            2. 对 SHOW、DESC、DESCRIBE、EXPLAIN 这类元数据查询，可直接执行原 SQL 做校验；
+            3. 如果校验报错，必须继续修正 SQL 并重新校验，直到通过后再返回最终结果。
             除非用户明确要求全量数据，否则默认追加 LIMIT 100。
+            最终返回的必须是通过校验后的原始 SQL，不要把校验SQL的包装语句当作最终答案返回。
 
-            最终只返回纯 SQL 本身，不要附加解释、注释、Markdown 或自然语言。返回内容必须可直接执行。
+            最终只返回格式化后的纯 SQL 本身，不要附加解释、注释、Markdown 或自然语言。
             """;
 
     public static final String REPORT_AGENT_PROMPT = """

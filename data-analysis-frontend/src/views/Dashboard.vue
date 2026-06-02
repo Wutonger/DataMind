@@ -1,19 +1,19 @@
 <template>
   <div class="workspace-page dashboard-page">
     <section class="page-section dashboard-hero">
-        <div class="dashboard-hero-copy">
-          <h3 class="dashboard-title">工作区概览</h3>
-          <p class="dashboard-subtitle">
-            <template v-if="activeConnection">
-              当前正在使用
-              <span class="dashboard-connection-highlight">{{ activeConnection.name }}</span>
-              ，可以直接查看表分析、SQL 工作台和最近执行。
-            </template>
-            <template v-else>
-              {{ dashboardSubtitle }}
-            </template>
-          </p>
-        </div>
+      <div class="dashboard-hero-copy">
+        <h3 class="dashboard-title">工作区概览</h3>
+        <p class="dashboard-subtitle">
+          <template v-if="activeConnection">
+            当前正在使用
+            <span class="dashboard-connection-highlight">{{ activeConnection.name }}</span>
+            ，可以继续查看表结构、执行 SQL 或生成报表。
+          </template>
+          <template v-else>
+            先选择一个可用连接，首页会自动汇总当前连接下的分析、会话和报表数据。
+          </template>
+        </p>
+      </div>
 
       <div class="dashboard-hero-actions">
         <n-button
@@ -22,7 +22,7 @@
           class="dashboard-refresh-button"
           :loading="loading"
           aria-label="刷新首页数据"
-          @click="loadDashboardData"
+          @click="refreshDashboard"
         >
           <template #icon>
             <n-icon :size="16">
@@ -34,11 +34,7 @@
     </section>
 
     <section class="dashboard-stats">
-      <article
-        v-for="card in statCards"
-        :key="card.key"
-        class="page-section dashboard-stat-card"
-      >
+      <article v-for="card in statCards" :key="card.key" class="page-section dashboard-stat-card">
         <span class="stat-label">{{ card.label }}</span>
         <strong class="stat-value">{{ card.value }}</strong>
         <span class="stat-meta">{{ card.meta }}</span>
@@ -76,7 +72,7 @@
 
         <div v-else class="dashboard-empty">
           <h4>还没有执行记录</h4>
-          <p>从智能执行发起一次分析后，最近记录会显示在这里。</p>
+          <p>从智能执行发起一次任务后，最近记录会显示在这里。</p>
         </div>
       </div>
 
@@ -90,12 +86,10 @@
         <div v-if="activeConnection" class="dashboard-connection-card">
           <div class="dashboard-connection-head">
             <div>
-              <span class="dashboard-connection-type">
-                {{ formatDbType(activeConnection.type) }}
-              </span>
+              <span class="dashboard-connection-type">{{ formatDbType(activeConnection.type) }}</span>
               <h4>{{ activeConnection.name }}</h4>
             </div>
-            <span class="dashboard-connection-status">已激活</span>
+            <span class="dashboard-connection-status">已选择</span>
           </div>
 
           <div class="dashboard-connection-facts">
@@ -118,14 +112,14 @@
           </div>
 
           <div class="dashboard-panel-actions">
-            <n-button size="small" type="primary" @click="router.push('/analysis')">查看表分析</n-button>
+            <n-button size="small" type="primary" @click="router.push('/analysis')">查看表结构</n-button>
             <n-button size="small" secondary @click="router.push('/sql-studio')">打开 SQL 工作台</n-button>
           </div>
         </div>
 
         <div v-else class="dashboard-empty">
-          <h4>还没有激活连接</h4>
-          <p>先选择一个数据库连接，首页就会显示分析表数、报表数和最近活动。</p>
+          <h4>还没有选中连接</h4>
+          <p>先到连接管理页选择一个数据库连接，这里就会展示当前工作区数据。</p>
           <n-button type="primary" size="small" @click="router.push('/connections')">
             前往连接管理
           </n-button>
@@ -137,21 +131,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { NButton, NIcon } from 'naive-ui'
-import axios from 'axios'
-import { RefreshOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
+import { RefreshOutline } from '@vicons/ionicons5'
+import { NButton, NIcon } from 'naive-ui'
 import { chatApi, reportApi, tableApi } from '@/api'
 import { useAppStore } from '@/stores/app'
-
-interface DashboardConnection {
-  id: number
-  name: string
-  type: string
-  host: string
-  port: number
-  database: string
-}
+import { useAuthStore } from '@/stores/auth'
 
 interface ChatSessionRecord {
   id: string
@@ -169,46 +154,38 @@ interface ReportRecord {
 
 const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const loading = ref(false)
-const connections = ref<DashboardConnection[]>([])
 const recentSessions = ref<ChatSessionRecord[]>([])
 const analyzedTables = ref<TableMetadataRecord[]>([])
 const reports = ref<ReportRecord[]>([])
 
-const activeConnection = computed(() =>
-  connections.value.find((item) => item.id === appStore.currentConnectionId) || null
-)
-
+const activeConnection = computed(() => appStore.currentConnection)
+const connectionCount = computed(() => appStore.accessibleConnections.length)
 const analyzedTableCount = computed(() => analyzedTables.value.length)
 const reportCount = computed(() => reports.value.length)
 const sessionCount = computed(() => recentSessions.value.length)
 
-const lastSessionTime = computed(() => recentSessions.value[0]?.updatedAt || recentSessions.value[0]?.createdAt)
+const lastSessionTime = computed(
+  () => recentSessions.value[0]?.updatedAt || recentSessions.value[0]?.createdAt
+)
 
 const lastAnalyzedTime = computed(() => {
   const values = analyzedTables.value
     .map((item) => item.analyzedAt)
     .filter((value): value is string => Boolean(value))
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())
 
   return values[0]
-})
-
-const dashboardSubtitle = computed(() => {
-  if (connections.value.length > 0) {
-    return '你已经配置了数据连接，选择一个连接后，首页会显示表分析和报表统计。'
-  }
-
-  return '从添加数据库连接开始，首页会自动汇总连接、表分析、报表和最近会话。'
 })
 
 const statCards = computed(() => [
   {
     key: 'connections',
     label: '连接数量',
-    value: connections.value.length,
-    meta: connections.value.length > 0 ? '已配置的数据源总数' : '还没有可用连接'
+    value: connectionCount.value,
+    meta: connectionCount.value > 0 ? '当前账号可访问的数据源总数' : '当前还没有可用连接'
   },
   {
     key: 'tables',
@@ -275,24 +252,25 @@ const goToChat = () => {
   router.push('/chat')
 }
 
-const loadDashboardData = async () => {
+const resetDependentData = () => {
+  recentSessions.value = []
+  analyzedTables.value = []
+  reports.value = []
+}
+
+const loadDashboardMetrics = async () => {
+  const connectionId = appStore.currentConnectionId
+  if (!connectionId) {
+    resetDependentData()
+    return
+  }
+
   loading.value = true
-
   try {
-    const connectionRes = await axios.get('/api/connections')
-    connections.value = Array.isArray(connectionRes.data) ? connectionRes.data : []
-
-    if (!appStore.currentConnectionId) {
-      recentSessions.value = []
-      analyzedTables.value = []
-      reports.value = []
-      return
-    }
-
     const [sessionRes, metadataRes, reportRes] = await Promise.allSettled([
-      chatApi.getSessions(appStore.currentConnectionId),
-      tableApi.getMetadata(appStore.currentConnectionId),
-      reportApi.list(appStore.currentConnectionId)
+      chatApi.getSessions(connectionId),
+      tableApi.getMetadata(connectionId),
+      reportApi.list(connectionId)
     ])
 
     recentSessions.value =
@@ -310,11 +288,18 @@ const loadDashboardData = async () => {
         ? reportRes.value.data
         : []
   } catch (error) {
-    console.error('Failed to load dashboard data', error)
-    connections.value = []
-    recentSessions.value = []
-    analyzedTables.value = []
-    reports.value = []
+    console.error('Failed to load dashboard metrics', error)
+    resetDependentData()
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshDashboard = async () => {
+  loading.value = true
+  try {
+    await appStore.loadAccessibleConnections(authStore.user?.lastConnectionId ?? appStore.currentConnectionId)
+    await loadDashboardMetrics()
   } finally {
     loading.value = false
   }
@@ -323,12 +308,12 @@ const loadDashboardData = async () => {
 watch(
   () => appStore.currentConnectionId,
   () => {
-    loadDashboardData()
+    loadDashboardMetrics()
   }
 )
 
 onMounted(() => {
-  loadDashboardData()
+  loadDashboardMetrics()
 })
 </script>
 

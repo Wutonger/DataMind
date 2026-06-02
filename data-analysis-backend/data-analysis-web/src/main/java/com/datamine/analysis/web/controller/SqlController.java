@@ -1,6 +1,8 @@
 package com.datamine.analysis.web.controller;
 
 import com.datamine.analysis.common.entity.SqlHistory;
+import com.datamine.analysis.core.service.ConnectionAccessService;
+import com.datamine.analysis.core.service.CurrentUserService;
 import com.datamine.analysis.core.service.SqlFormatService;
 import com.datamine.analysis.core.service.SqlHistoryService;
 import com.datamine.analysis.core.service.SqlService;
@@ -19,6 +21,8 @@ public class SqlController {
     private final SqlService sqlService;
     private final SqlFormatService sqlFormatService;
     private final SqlHistoryService sqlHistoryService;
+    private final CurrentUserService currentUserService;
+    private final ConnectionAccessService connectionAccessService;
 
     @PostMapping("/execute")
     public ResponseEntity<Map<String, Object>> executeSql(@RequestBody Map<String, Object> request) {
@@ -27,8 +31,10 @@ public class SqlController {
         if (sql == null || sql.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "sql is required"));
         }
-        Map<String, Object> result = sqlService.executeQuery(connectionId, sql);
-        return ResponseEntity.ok(result);
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
+        return ResponseEntity.ok(sqlService.executeQuery(connectionId, sql));
     }
 
     @PostMapping("/generate")
@@ -43,12 +49,17 @@ public class SqlController {
         if (question == null || question.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "question is required"));
         }
+
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
+
         try {
-            Map<String, String> result = sqlService.generateSql(connectionId, question);
+            Map<String, String> result = sqlService.generateSql(userId, connectionId, question);
             String sql = result.get("sql");
             if (sql != null && !sql.isBlank()) {
                 String sessionId = request.get("sessionId") != null ? request.get("sessionId").toString() : null;
-                sqlHistoryService.recordGenerated(connectionId, sessionId, sql, question);
+                sqlHistoryService.recordGenerated(userId, connectionId, sessionId, sql, question);
             }
             return ResponseEntity.ok(result);
         } catch (IllegalStateException e) {
@@ -62,20 +73,25 @@ public class SqlController {
         if (sql == null || sql.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "sql is required"));
         }
-        String formatted = sqlFormatService.format(sql);
-        return ResponseEntity.ok(Map.of("sql", formatted));
+        return ResponseEntity.ok(Map.of("sql", sqlFormatService.format(sql)));
     }
 
     @GetMapping("/history/{connectionId}")
     public ResponseEntity<List<SqlHistory>> getHistory(@PathVariable Long connectionId) {
-        return ResponseEntity.ok(sqlHistoryService.getRecentByConnectionId(connectionId));
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
+        return ResponseEntity.ok(sqlHistoryService.getRecentByConnectionId(userId, connectionId));
     }
 
     @DeleteMapping("/history/{connectionId}/{historyId}")
     public ResponseEntity<Map<String, Object>> deleteHistory(@PathVariable Long connectionId,
                                                              @PathVariable Long historyId) {
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
         try {
-            sqlHistoryService.deleteByConnectionId(connectionId, historyId);
+            sqlHistoryService.deleteByConnectionId(userId, connectionId, historyId);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

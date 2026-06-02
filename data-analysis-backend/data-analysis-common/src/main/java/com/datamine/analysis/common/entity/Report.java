@@ -16,6 +16,9 @@ public class Report {
     @Column(nullable = false)
     private String name;
 
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
     @Column(name = "connection_id")
     private Long connectionId;
 

@@ -30,7 +30,8 @@ public class SaveChartReportToolService {
     private final ObjectMapper objectMapper;
     private final ToolExecutionSupport toolExecutionSupport;
 
-    public Map<String, Object> execute(Long connectionId,
+    public Map<String, Object> execute(Long userId,
+                                       Long connectionId,
                                        String userInput,
                                        SaveChartReportInput input,
                                        ToolContext toolContext) {
@@ -44,7 +45,7 @@ public class SaveChartReportToolService {
         try {
             String sql = toolExecutionSupport.requirePreparedSql(input.sql(), toolContext);
             Map<String, Object> rawResult = toolExecutionSupport.requireLatestQueryResult(toolContext);
-            Report savedReport = saveChartReport(connectionId, userInput, input, sql);
+            Report savedReport = saveChartReport(userId, connectionId, userInput, input, sql);
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sql", sql);
@@ -62,13 +63,15 @@ public class SaveChartReportToolService {
         }
     }
 
-    private Report saveChartReport(Long connectionId,
+    private Report saveChartReport(Long userId,
+                                   Long connectionId,
                                    String userInput,
                                    SaveChartReportInput input,
                                    String sql) {
         try {
             Report report = new Report();
             report.setName(resolveReportName(input.name(), userInput, input.chartConfig()));
+            report.setUserId(userId);
             report.setConnectionId(connectionId);
             report.setQuery(sql);
             report.setChartType(resolveChartType(input.chartConfig()));

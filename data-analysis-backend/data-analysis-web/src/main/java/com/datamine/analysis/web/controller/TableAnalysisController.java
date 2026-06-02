@@ -2,6 +2,8 @@ package com.datamine.analysis.web.controller;
 
 import com.datamine.analysis.common.entity.TableMetadata;
 import com.datamine.analysis.core.schema.TableScanner;
+import com.datamine.analysis.core.service.ConnectionAccessService;
+import com.datamine.analysis.core.service.CurrentUserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,12 +29,17 @@ public class TableAnalysisController {
 
     private final TableScanner tableScanner;
     private final ObjectMapper objectMapper;
+    private final CurrentUserService currentUserService;
+    private final ConnectionAccessService connectionAccessService;
     private final AsyncTaskExecutor scanTaskExecutor = new SimpleAsyncTaskExecutor("table-scan-");
 
     @GetMapping(value = "/scan/{connectionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<SseEmitter> scanTables(@PathVariable Long connectionId) {
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
         SseEmitter emitter = new SseEmitter(0L);
-        scanTaskExecutor.execute(() -> streamTableScan(connectionId, emitter));
+        scanTaskExecutor.execute(() -> streamTableScan(userId, connectionId, emitter));
 
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
@@ -43,12 +50,15 @@ public class TableAnalysisController {
 
     @GetMapping("/metadata/{connectionId}")
     public ResponseEntity<List<TableMetadata>> getMetadata(@PathVariable Long connectionId) {
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, connectionId);
         return ResponseEntity.ok(tableScanner.getCachedMetadata(connectionId));
     }
 
-    private void streamTableScan(Long connectionId, SseEmitter emitter) {
+    private void streamTableScan(Long userId, Long connectionId, SseEmitter emitter) {
         try {
-            List<TableMetadata> tables = tableScanner.scanTables(connectionId, event ->
+            List<TableMetadata> tables = tableScanner.scanTables(userId, connectionId, event ->
                     trySendEvent(emitter, event.type(), event.data()));
 
             Map<String, Object> payload = new LinkedHashMap<>();

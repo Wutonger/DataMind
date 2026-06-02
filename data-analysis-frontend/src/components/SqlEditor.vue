@@ -8,34 +8,46 @@
       </n-space>
     </div>
 
-    <n-input
+    <textarea
+      class="sql-editor-textarea"
       :value="modelValue"
-      @update:value="$emit('update:modelValue', $event)"
-      type="textarea"
       :placeholder="placeholder"
       :rows="rows"
-      class="sql-editor"
+      spellcheck="false"
+      @input="handleInput"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { NButton, NInput, NSpace } from 'naive-ui'
+import { NButton, NSpace } from 'naive-ui'
 
-defineProps<{
-  modelValue: string
-  placeholder?: string
-  rows?: number
-  executing?: boolean
-  showToolbar?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    modelValue: string
+    placeholder?: string
+    rows?: number
+    executing?: boolean
+    showToolbar?: boolean
+  }>(),
+  {
+    placeholder: '',
+    rows: 12,
+    executing: false,
+    showToolbar: false
+  }
+)
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: string]
   execute: []
   format: []
   clear: []
 }>()
+
+const handleInput = (event: Event) => {
+  emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
+}
 </script>
 
 <style scoped>
@@ -47,36 +59,31 @@ defineEmits<{
 }
 
 .editor-toolbar {
+  display: flex;
+  justify-content: flex-end;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
   background: var(--background-muted);
-  display: flex;
-  justify-content: flex-end;
 }
 
-.sql-editor-wrapper :deep(.n-input) {
-  --n-border: none !important;
-  --n-border-hover: none !important;
-  --n-border-focus: none !important;
-  --n-box-shadow-focus: none !important;
-  --n-color: transparent !important;
-  --n-color-focus: transparent !important;
-  --n-text-color: var(--text-color) !important;
-  --n-placeholder-color: var(--text-muted) !important;
-}
-
-.sql-editor-wrapper :deep(.n-input__textarea-el),
-.sql-editor-wrapper :deep(.n-input__textarea-mirror),
-.sql-editor-wrapper :deep(.n-input__placeholder) {
-  box-sizing: border-box;
-  padding: 18px 20px !important;
+.sql-editor-textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 18px 20px;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  background: transparent;
+  color: var(--text-color);
+  caret-color: var(--primary-color);
+  cursor: text;
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.75 !important;
+  line-height: 1.75;
   letter-spacing: 0.01em;
 }
 
-.sql-editor-wrapper :deep(.n-input__textarea-el) {
-  min-height: 280px;
+.sql-editor-textarea::placeholder {
+  color: var(--text-muted);
 }
 </style>

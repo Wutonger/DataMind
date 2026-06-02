@@ -38,6 +38,9 @@ public class WorkflowRunEntity {
     @Column(name = "connection_id")
     private Long connectionId;
 
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "route_mode", length = 64)
     private String routeMode;
 

@@ -48,11 +48,15 @@ public class TableScanner {
     }
 
     public List<TableMetadata> scanTables(Long connectionId) {
-        return scanTables(connectionId, null);
+        return scanTables(null, connectionId, null);
     }
 
     public List<TableMetadata> scanTables(Long connectionId, TableScanProgressListener progressListener) {
-        String workflowRunId = workflowRunTracker.startRun("analysis", connectionId, "全库表结构分析");
+        return scanTables(null, connectionId, progressListener);
+    }
+
+    public List<TableMetadata> scanTables(Long userId, Long connectionId, TableScanProgressListener progressListener) {
+        String workflowRunId = workflowRunTracker.startRun("analysis", userId, connectionId, "全库表结构分析");
         String routeStepId = workflowRunId + "-route";
         String scanStepId = workflowRunId + "-scan";
         String relationStepId = workflowRunId + "-relation";

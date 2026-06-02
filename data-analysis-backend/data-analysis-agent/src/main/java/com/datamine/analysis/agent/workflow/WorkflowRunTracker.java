@@ -6,6 +6,7 @@ import com.datamine.analysis.common.dto.workflow.WorkflowTimelineItemDTO;
 import com.datamine.analysis.common.entity.WorkflowRunEntity;
 import com.datamine.analysis.common.entity.WorkflowStepEntity;
 import com.datamine.analysis.common.entity.WorkflowTimelineEntity;
+import com.datamine.analysis.common.repository.SysUserRepository;
 import com.datamine.analysis.common.repository.WorkflowRunRepository;
 import com.datamine.analysis.common.repository.WorkflowStepRepository;
 import com.datamine.analysis.common.repository.WorkflowTimelineRepository;
@@ -44,24 +45,26 @@ public class WorkflowRunTracker {
     private final WorkflowRunRepository workflowRunRepository;
     private final WorkflowStepRepository workflowStepRepository;
     private final WorkflowTimelineRepository workflowTimelineRepository;
+    private final SysUserRepository sysUserRepository;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 内存态只保存最近活跃的运行，用来维护步骤顺序和时间线顺序。
-     * 查询结果统一以数据库为准，这样服务重启后流程记录仍然可见。
-     */
     private final Map<String, MutableWorkflowRun> activeRuns = new ConcurrentHashMap<>();
     private final ConcurrentLinkedDeque<String> runOrder = new ConcurrentLinkedDeque<>();
 
     @Transactional
     public String startRun(String scene, String title) {
-        return startRun(scene, null, title);
+        return startRun(scene, null, null, title);
     }
 
     @Transactional
     public String startRun(String scene, Long connectionId, String title) {
+        return startRun(scene, null, connectionId, title);
+    }
+
+    @Transactional
+    public String startRun(String scene, Long userId, Long connectionId, String title) {
         String runId = "wf_" + snowflakeIdGenerator.nextId();
-        MutableWorkflowRun run = new MutableWorkflowRun(runId, normalizeScene(scene), connectionId, normalizeTitle(title));
+        MutableWorkflowRun run = new MutableWorkflowRun(runId, normalizeScene(scene), userId, connectionId, normalizeTitle(title));
         activeRuns.put(runId, run);
         runOrder.addFirst(runId);
         trimActiveRuns();
@@ -92,12 +95,12 @@ public class WorkflowRunTracker {
             step.id = stepId;
             step.order = isNewStep ? run.stepOrder.size() + 1 : step.order;
             step.agentId = normalizeAgentId(agentId);
-            step.owner = StringUtils.hasText(owner) ? owner : resolveOwner(step.agentId);
+            step.owner = StringUtils.hasText(owner) ? owner.trim() : resolveOwner(step.agentId);
             step.title = defaultIfBlank(title, "处理步骤");
             step.kind = defaultIfBlank(kind, "Workflow Step");
             step.status = "RUNNING";
             step.inputSummary = defaultIfBlank(inputSummary, "等待输入");
-            step.outputSummary = step.outputSummary == null ? "" : step.outputSummary;
+            step.outputSummary = defaultIfBlank(step.outputSummary, "");
             step.tools = normalizeTools(tools);
             step.startedAt = step.startedAt == null ? LocalDateTime.now() : step.startedAt;
             step.finishedAt = null;
@@ -172,31 +175,54 @@ public class WorkflowRunTracker {
 
     @Transactional(readOnly = true)
     public List<WorkflowRunDTO> listRuns(String scene) {
-        return listRuns(scene, null);
+        return listRuns(scene, null, true, null);
     }
 
     @Transactional(readOnly = true)
     public List<WorkflowRunDTO> listRuns(String scene, Long connectionId) {
+        return listRuns(scene, null, true, connectionId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<WorkflowRunDTO> listRuns(String scene, Long userId, boolean admin, Long connectionId) {
         String normalizedScene = normalizeScene(scene);
-        List<WorkflowRunEntity> runEntities = connectionId == null
-                ? workflowRunRepository.findTop120BySceneOrderByStartedAtDesc(normalizedScene)
-                : workflowRunRepository.findTop120BySceneAndConnectionIdOrderByStartedAtDesc(normalizedScene, connectionId);
-        return runEntities
-                .stream()
-                .map(this::toDto)
-                .toList();
+        List<WorkflowRunEntity> entities;
+        if (admin) {
+            entities = connectionId == null
+                    ? workflowRunRepository.findTop120BySceneOrderByStartedAtDesc(normalizedScene)
+                    : workflowRunRepository.findTop120BySceneAndConnectionIdOrderByStartedAtDesc(normalizedScene, connectionId);
+        } else if (connectionId == null) {
+            entities = workflowRunRepository.findTop120BySceneAndUserIdOrderByStartedAtDesc(normalizedScene, userId);
+        } else {
+            entities = workflowRunRepository.findTop120BySceneAndUserIdAndConnectionIdOrderByStartedAtDesc(
+                    normalizedScene, userId, connectionId
+            );
+        }
+        return entities.stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public Optional<WorkflowRunDTO> getRun(String runId) {
-        return getRun(runId, null);
+        return getRun(runId, null, true, null);
     }
 
     @Transactional(readOnly = true)
     public Optional<WorkflowRunDTO> getRun(String runId, Long connectionId) {
-        Optional<WorkflowRunEntity> entity = connectionId == null
-                ? workflowRunRepository.findById(runId)
-                : workflowRunRepository.findByIdAndConnectionId(runId, connectionId);
+        return getRun(runId, null, true, connectionId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<WorkflowRunDTO> getRun(String runId, Long userId, boolean admin, Long connectionId) {
+        Optional<WorkflowRunEntity> entity;
+        if (admin) {
+            entity = connectionId == null
+                    ? workflowRunRepository.findById(runId)
+                    : workflowRunRepository.findByIdAndConnectionId(runId, connectionId);
+        } else if (connectionId == null) {
+            entity = workflowRunRepository.findByIdAndUserId(runId, userId);
+        } else {
+            entity = workflowRunRepository.findByIdAndUserIdAndConnectionId(runId, userId, connectionId);
+        }
         return entity.map(this::toDto);
     }
 
@@ -210,11 +236,9 @@ public class WorkflowRunTracker {
                 trimActiveRuns();
             }
         }
-
         if (run == null) {
             return;
         }
-
         synchronized (run) {
             mutator.accept(run);
         }
@@ -225,8 +249,10 @@ public class WorkflowRunTracker {
             MutableWorkflowRun run = new MutableWorkflowRun(
                     runEntity.getId(),
                     runEntity.getScene(),
+                    runEntity.getUserId(),
                     runEntity.getConnectionId(),
-                    runEntity.getTitle());
+                    runEntity.getTitle()
+            );
             run.routeMode = normalizeRouteMode(runEntity.getRouteMode());
             run.status = defaultIfBlank(runEntity.getStatus(), "RUNNING");
             run.startedAt = runEntity.getStartedAt();
@@ -234,11 +260,10 @@ public class WorkflowRunTracker {
             run.finalPath.addAll(readStringList(runEntity.getFinalPath()));
             run.usedAgents.addAll(readStringList(runEntity.getUsedAgents()));
 
-            List<WorkflowStepEntity> stepEntities = workflowStepRepository.findByRunIdOrderByStepOrderAsc(runId);
-            for (WorkflowStepEntity stepEntity : stepEntities) {
+            for (WorkflowStepEntity stepEntity : workflowStepRepository.findByRunIdOrderByStepOrderAsc(runId)) {
                 MutableWorkflowStep step = new MutableWorkflowStep();
                 step.id = stepEntity.getId();
-                step.order = stepEntity.getStepOrder() == null ? run.stepOrder.size() + 1 : stepEntity.getStepOrder();
+                step.order = stepEntity.getStepOrder();
                 step.agentId = normalizeAgentId(stepEntity.getAgentId());
                 step.owner = defaultIfBlank(stepEntity.getOwner(), resolveOwner(step.agentId));
                 step.title = defaultIfBlank(stepEntity.getTitle(), "处理步骤");
@@ -252,13 +277,16 @@ public class WorkflowRunTracker {
                 run.stepOrder.add(step.id);
                 run.steps.put(step.id, step);
             }
-
             run.timelineCount = workflowTimelineRepository.findByRunIdOrderByEventOrderAsc(runId).size();
             return run;
         });
     }
 
     private WorkflowRunDTO toDto(WorkflowRunEntity runEntity) {
+        var user = runEntity.getUserId() == null
+                ? null
+                : sysUserRepository.findById(runEntity.getUserId()).orElse(null);
+
         List<WorkflowStepDTO> steps = workflowStepRepository.findByRunIdOrderByStepOrderAsc(runEntity.getId())
                 .stream()
                 .map(this::toStepDto)
@@ -278,6 +306,9 @@ public class WorkflowRunTracker {
                 runEntity.getId(),
                 normalizeScene(runEntity.getScene()),
                 defaultIfBlank(runEntity.getTitle(), "未命名运行"),
+                runEntity.getUserId(),
+                user != null ? user.getUsername() : "",
+                user != null ? defaultIfBlank(user.getNickname(), user.getUsername()) : "",
                 normalizeRouteMode(runEntity.getRouteMode()),
                 defaultIfBlank(runEntity.getStatus(), "RUNNING"),
                 resolveDuration(runEntity.getStartedAt(), runEntity.getFinishedAt()),
@@ -308,11 +339,9 @@ public class WorkflowRunTracker {
         if (!StringUtils.hasText(agentId)) {
             return;
         }
-
         if (!run.usedAgents.contains(agentId)) {
             run.usedAgents.add(agentId);
         }
-
         if (run.finalPath.isEmpty() || !owner.equals(run.finalPath.get(run.finalPath.size() - 1))) {
             run.finalPath.add(owner);
         }
@@ -334,6 +363,7 @@ public class WorkflowRunTracker {
         entity.setId(run.id);
         entity.setScene(normalizeScene(run.scene));
         entity.setTitle(normalizeTitle(run.title));
+        entity.setUserId(run.userId);
         entity.setConnectionId(run.connectionId);
         entity.setRouteMode(normalizeRouteMode(run.routeMode));
         entity.setStatus(defaultIfBlank(run.status, "RUNNING"));
@@ -362,66 +392,6 @@ public class WorkflowRunTracker {
         workflowStepRepository.save(entity);
     }
 
-    private long resolveDuration(LocalDateTime startedAt, LocalDateTime finishedAt) {
-        if (startedAt == null) {
-            return 0L;
-        }
-        LocalDateTime end = finishedAt != null ? finishedAt : LocalDateTime.now();
-        return Math.max(0L, Duration.between(startedAt, end).toMillis());
-    }
-
-    private List<String> normalizeTools(List<String> tools) {
-        if (tools == null || tools.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String tool : tools) {
-            if (StringUtils.hasText(tool)) {
-                normalized.add(tool.trim());
-            }
-        }
-        return new ArrayList<>(normalized);
-    }
-
-    private List<String> mergeTools(List<String> existing, List<String> incoming) {
-        LinkedHashSet<String> merged = new LinkedHashSet<>();
-        if (existing != null) {
-            merged.addAll(existing);
-        }
-        if (incoming != null) {
-            for (String tool : incoming) {
-                if (StringUtils.hasText(tool)) {
-                    merged.add(tool.trim());
-                }
-            }
-        }
-        return new ArrayList<>(merged);
-    }
-
-    private List<String> readStringList(String json) {
-        if (!StringUtils.hasText(json)) {
-            return new ArrayList<>();
-        }
-
-        try {
-            List<String> parsed = objectMapper.readValue(json, STRING_LIST_TYPE);
-            return parsed == null ? new ArrayList<>() : new ArrayList<>(parsed);
-        } catch (Exception e) {
-            log.warn("Failed to parse workflow json list", e);
-            return new ArrayList<>();
-        }
-    }
-
-    private String writeStringList(List<String> values) {
-        try {
-            return objectMapper.writeValueAsString(values == null ? List.of() : values);
-        } catch (Exception e) {
-            log.warn("Failed to serialize workflow json list", e);
-            return "[]";
-        }
-    }
-
     private void trimActiveRuns() {
         while (runOrder.size() > MAX_ACTIVE_RUNS) {
             String removedRunId = runOrder.pollLast();
@@ -431,31 +401,76 @@ public class WorkflowRunTracker {
         }
     }
 
+    private List<String> normalizeTools(List<String> tools) {
+        if (tools == null || tools.isEmpty()) {
+            return new ArrayList<>();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String tool : tools) {
+            if (StringUtils.hasText(tool)) {
+                normalized.add(tool.trim());
+            }
+        }
+        return new ArrayList<>(normalized);
+    }
+
+    private List<String> mergeTools(List<String> existing, List<String> appended) {
+        LinkedHashSet<String> merged = new LinkedHashSet<>(normalizeTools(existing));
+        merged.addAll(normalizeTools(appended));
+        return new ArrayList<>(merged);
+    }
+
+    private List<String> readStringList(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            return new ArrayList<>(objectMapper.readValue(json, STRING_LIST_TYPE));
+        } catch (Exception e) {
+            log.warn("Failed to read workflow string list", e);
+            return new ArrayList<>();
+        }
+    }
+
+    private String writeStringList(List<String> values) {
+        try {
+            return objectMapper.writeValueAsString(values == null ? List.of() : values);
+        } catch (Exception e) {
+            log.warn("Failed to write workflow string list", e);
+            return "[]";
+        }
+    }
+
+    private long resolveDuration(LocalDateTime startedAt, LocalDateTime finishedAt) {
+        if (startedAt == null) {
+            return 0L;
+        }
+        LocalDateTime endTime = finishedAt == null ? LocalDateTime.now() : finishedAt;
+        return Math.max(Duration.between(startedAt, endTime).toMillis(), 0L);
+    }
+
     private String normalizeScene(String scene) {
-        return switch (scene == null ? "" : scene.trim().toLowerCase()) {
-            case "sql", "analysis", "report" -> scene.trim().toLowerCase();
-            default -> "chat";
-        };
+        if (!StringUtils.hasText(scene)) {
+            return "chat";
+        }
+        return scene.trim().toLowerCase();
     }
 
     private String normalizeRouteMode(String routeMode) {
-        return StringUtils.hasText(routeMode) ? routeMode.trim() : "SINGLE_AGENT";
+        return defaultIfBlank(routeMode, "SINGLE_AGENT");
     }
 
     private String normalizeAgentId(String agentId) {
-        if (!StringUtils.hasText(agentId)) {
-            return "assistant";
-        }
-        return agentId.trim().toLowerCase();
+        return defaultIfBlank(agentId, "assistant");
     }
 
     private String resolveOwner(String agentId) {
-        return switch (normalizeAgentId(agentId)) {
-            case "assistant", "assistant-agent" -> "AssistantAgent";
-            case "knowledge", "data", "coordinator" -> "AssistantAgent";
-            case "system" -> "System";
-            case "output" -> "Final Output";
-            default -> "AssistantAgent";
+        String normalized = normalizeAgentId(agentId);
+        return switch (normalized) {
+            case "assistant" -> "AssistantAgent";
+            case "knowledge" -> "KnowledgeAgent";
+            case "data" -> "DataAgent";
+            default -> normalized;
         };
     }
 
@@ -471,6 +486,7 @@ public class WorkflowRunTracker {
     private static final class MutableWorkflowRun {
         private final String id;
         private final String scene;
+        private final Long userId;
         private final Long connectionId;
         private final String title;
         private final Map<String, MutableWorkflowStep> steps = new LinkedHashMap<>();
@@ -484,9 +500,10 @@ public class WorkflowRunTracker {
         private LocalDateTime finishedAt;
         private int timelineCount;
 
-        private MutableWorkflowRun(String id, String scene, Long connectionId, String title) {
+        private MutableWorkflowRun(String id, String scene, Long userId, Long connectionId, String title) {
             this.id = id;
             this.scene = scene;
+            this.userId = userId;
             this.connectionId = connectionId;
             this.title = title;
         }

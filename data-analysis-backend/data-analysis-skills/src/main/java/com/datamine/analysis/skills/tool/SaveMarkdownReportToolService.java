@@ -29,7 +29,8 @@ public class SaveMarkdownReportToolService {
     private final ObjectMapper objectMapper;
     private final ToolExecutionSupport toolExecutionSupport;
 
-    public Map<String, Object> execute(Long connectionId,
+    public Map<String, Object> execute(Long userId,
+                                       Long connectionId,
                                        String userInput,
                                        SaveMarkdownReportInput input,
                                        ToolContext toolContext) {
@@ -43,7 +44,7 @@ public class SaveMarkdownReportToolService {
         try {
             String sql = toolExecutionSupport.requirePreparedSql(input.sql(), toolContext);
             Map<String, Object> rawResult = toolExecutionSupport.requireLatestQueryResult(toolContext);
-            Report savedReport = saveReport(connectionId, userInput, input, sql);
+            Report savedReport = saveReport(userId, connectionId, userInput, input, sql);
 
             Map<String, Object> reportConfig = Map.of(
                     "type", "markdown",
@@ -67,13 +68,15 @@ public class SaveMarkdownReportToolService {
         }
     }
 
-    private Report saveReport(Long connectionId,
+    private Report saveReport(Long userId,
+                              Long connectionId,
                               String userInput,
                               SaveMarkdownReportInput input,
                               String sql) {
         try {
             Report report = new Report();
             report.setName(resolveReportName(input.name(), userInput, input.content()));
+            report.setUserId(userId);
             report.setConnectionId(connectionId);
             report.setQuery(sql);
             report.setChartType("report");

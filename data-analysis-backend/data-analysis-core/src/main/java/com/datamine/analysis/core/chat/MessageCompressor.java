@@ -23,21 +23,22 @@ import java.util.Map;
 public class MessageCompressor {
 
     private static final int MIN_MESSAGES_TO_COMPRESS = 5;
-    private static final String SUMMARY_PREFIX = "之前的对话摘要：";
+    private static final String SUMMARY_PREFIX = "之前对话摘要：";
     private static final String SUMMARY_SYSTEM_PROMPT = "请用简洁的语言总结以下对话内容，保留关键信息，例如数据库名、表名、查询条件和分析结论，控制在 200 字以内。";
 
     private final ChatModelFactory chatModelFactory;
     private final PersistentChatMemory chatMemory;
     private final ChatSessionRepository chatSessionRepository;
+    private final ObjectMapper objectMapper;
 
-    public CompressResult compress(String sessionId) {
-        List<Message> messages = chatMemory.get(sessionId);
+    public CompressResult compress(Long userId, String sessionId) {
+        List<Message> messages = chatMemory.getMessages(userId, sessionId);
 
         if (messages.size() <= MIN_MESSAGES_TO_COMPRESS) {
             return new CompressResult(false, "消息数量不足，无需压缩", messages.size(), messages.size());
         }
 
-        log.info("Compressing conversation {}: {} messages", sessionId, messages.size());
+        log.info("Compressing conversation {} for user {}", sessionId, userId);
 
         List<Message> conversationMessages = new ArrayList<>();
         for (Message message : messages) {
@@ -50,7 +51,7 @@ public class MessageCompressor {
             return new CompressResult(false, "对话消息数量不足，无需压缩", messages.size(), messages.size());
         }
 
-        String existingSummary = getExistingSummary(sessionId);
+        String existingSummary = getExistingSummary(userId, sessionId);
         StringBuilder summaryBuilder = new StringBuilder();
         if (existingSummary != null && !existingSummary.isEmpty()) {
             summaryBuilder.append(SUMMARY_PREFIX)
@@ -79,34 +80,30 @@ public class MessageCompressor {
                 summary = "暂无可用摘要。";
             }
 
-            saveSummary(sessionId, summary);
-
-            List<Message> compressed = List.of(new SystemMessage(SUMMARY_PREFIX + "\n" + summary));
-            replaceMessages(sessionId, compressed);
-
-            log.info("Compressed conversation {}: {} -> {} messages", sessionId, messages.size(), compressed.size());
-            return new CompressResult(true, "压缩成功", messages.size(), compressed.size());
+            saveSummary(userId, sessionId, summary);
+            replaceMessages(userId, sessionId, List.of(new SystemMessage(SUMMARY_PREFIX + "\n" + summary)));
+            return new CompressResult(true, "压缩成功", messages.size(), 1);
         } catch (Exception e) {
-            log.error("Failed to compress messages, keeping original conversation", e);
+            log.error("Failed to compress messages", e);
             return new CompressResult(false, "压缩失败，原会话已保留", messages.size(), messages.size());
         }
     }
 
-    private String getExistingSummary(String sessionId) {
-        return chatSessionRepository.findById(sessionId)
+    private String getExistingSummary(Long userId, String sessionId) {
+        return chatSessionRepository.findByIdAndUserId(sessionId, userId)
                 .map(ChatSession::getSummary)
                 .orElse(null);
     }
 
-    private void saveSummary(String sessionId, String summary) {
-        chatSessionRepository.findById(sessionId).ifPresent(session -> {
+    private void saveSummary(Long userId, String sessionId, String summary) {
+        chatSessionRepository.findByIdAndUserId(sessionId, userId).ifPresent(session -> {
             session.setSummary(summary);
             chatSessionRepository.save(session);
         });
     }
 
-    private void replaceMessages(String sessionId, List<Message> compressed) {
-        chatSessionRepository.findById(sessionId).ifPresent(session -> {
+    private void replaceMessages(Long userId, String sessionId, List<Message> compressed) {
+        chatSessionRepository.findByIdAndUserId(sessionId, userId).ifPresent(session -> {
             List<Map<String, String>> serialized = new ArrayList<>();
             for (Message message : compressed) {
                 serialized.add(Map.of(
@@ -115,8 +112,7 @@ public class MessageCompressor {
                 ));
             }
             try {
-                ObjectMapper mapper = new ObjectMapper();
-                session.setMessages(mapper.writeValueAsString(serialized));
+                session.setMessages(objectMapper.writeValueAsString(serialized));
                 chatSessionRepository.save(session);
             } catch (Exception e) {
                 log.error("Failed to replace messages after compression", e);
@@ -124,5 +120,6 @@ public class MessageCompressor {
         });
     }
 
-    public record CompressResult(boolean compressed, String message, int beforeCount, int afterCount) {}
+    public record CompressResult(boolean compressed, String message, int beforeCount, int afterCount) {
+    }
 }

@@ -1,12 +1,24 @@
 import axios from 'axios'
 
+const getToken = () => localStorage.getItem('satoken') || ''
+
+const withAuthHeaders = (headers: Record<string, string> = {}) => {
+  const token = getToken()
+  return token
+    ? {
+        ...headers,
+        satoken: token
+      }
+    : headers
+}
+
 export const tableApi = {
   scanAll: (connectionId: number) =>
     fetch(`/api/tables/scan/${connectionId}`, {
-      headers: {
+      headers: withAuthHeaders({
         Accept: 'text/event-stream',
         'Cache-Control': 'no-cache'
-      }
+      })
     }),
   getMetadata: (connectionId: number) => axios.get(`/api/tables/metadata/${connectionId}`)
 }
@@ -82,6 +94,9 @@ export interface WorkflowRun {
   id: string
   scene: string
   title: string
+  userId?: number | null
+  username?: string
+  nickname?: string
   routeMode: string
   status: string
   totalDurationMs: number
@@ -124,12 +139,10 @@ export const chatApi = {
   send: (sessionId: string | null, connectionId: number | null, message: string) => {
     return fetch('/api/chat/send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ sessionId: sessionId || null, connectionId, message })
     })
   },
-  stream: (sessionId: string | null, connectionId: number | null, message: string) =>
-    axios.post('/api/chat/stream', { sessionId: sessionId || null, connectionId, message }, { responseType: 'text' }),
   getHistory: (sessionId: string) => axios.get(`/api/chat/history/${sessionId}`),
   clearHistory: (sessionId: string) => axios.delete(`/api/chat/history/${sessionId}`),
   getSessions: (connectionId: number) => axios.get('/api/chat/sessions', { params: { connectionId } }),

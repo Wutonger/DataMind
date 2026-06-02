@@ -12,6 +12,9 @@ public class ChatSession {
     @Id
     private String id;
 
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
     @Column(name = "connection_id", nullable = false)
     private Long connectionId;
 

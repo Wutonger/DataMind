@@ -263,22 +263,11 @@ const formatSql = async () => {
 
   try {
     const res = await sqlApi.format(sqlContent.value)
-    sqlContent.value = res.data.formatted || res.data.sql || sqlContent.value
+    if (res.data.sql) {
+      sqlContent.value = res.data.sql
+    }
   } catch {
-    sqlContent.value = sqlContent.value
-      .replace(/\bSELECT\b/gi, '\nSELECT')
-      .replace(/\bFROM\b/gi, '\nFROM')
-      .replace(/\bWHERE\b/gi, '\nWHERE')
-      .replace(/\bAND\b/gi, '\n  AND')
-      .replace(/\bORDER BY\b/gi, '\nORDER BY')
-      .replace(/\bGROUP BY\b/gi, '\nGROUP BY')
-      .replace(/\bHAVING\b/gi, '\nHAVING')
-      .replace(/\bJOIN\b/gi, '\nJOIN')
-      .replace(/\bLEFT JOIN\b/gi, '\nLEFT JOIN')
-      .replace(/\bRIGHT JOIN\b/gi, '\nRIGHT JOIN')
-      .replace(/\bINNER JOIN\b/gi, '\nINNER JOIN')
-      .replace(/\bLIMIT\b/gi, '\nLIMIT')
-      .replace(/^\n/, '')
+    message.error('SQL 格式化失败')
   }
 }
 

@@ -20,23 +20,9 @@ public class SqlHistoryService {
         return sqlHistoryRepository.save(history);
     }
 
-    public SqlHistory recordSuccess(Long connectionId, String sessionId, String sql,
-                                    String naturalLanguage, String resultPreview,
-                                    int rowCount, long executionTimeMs) {
+    public SqlHistory recordGenerated(Long userId, Long connectionId, String sessionId, String sql, String naturalLanguage) {
         SqlHistory history = new SqlHistory();
-        history.setConnectionId(connectionId);
-        history.setSessionId(sessionId);
-        history.setSql(sql);
-        history.setNaturalLanguage(naturalLanguage);
-        history.setResultPreview(resultPreview);
-        history.setRowCount(rowCount);
-        history.setExecutionTimeMs(executionTimeMs);
-        history.setStatus("success");
-        return sqlHistoryRepository.save(history);
-    }
-
-    public SqlHistory recordGenerated(Long connectionId, String sessionId, String sql, String naturalLanguage) {
-        SqlHistory history = new SqlHistory();
+        history.setUserId(userId);
         history.setConnectionId(connectionId);
         history.setSessionId(sessionId);
         history.setSql(sql);
@@ -45,40 +31,22 @@ public class SqlHistoryService {
         return sqlHistoryRepository.save(history);
     }
 
-    public SqlHistory recordFailure(Long connectionId, String sessionId, String sql,
-                                    String naturalLanguage, long executionTimeMs,
-                                    String errorMessage) {
-        SqlHistory history = new SqlHistory();
-        history.setConnectionId(connectionId);
-        history.setSessionId(sessionId);
-        history.setSql(sql);
-        history.setNaturalLanguage(naturalLanguage);
-        history.setExecutionTimeMs(executionTimeMs);
-        history.setStatus("error");
-        history.setErrorMessage(errorMessage);
-        return sqlHistoryRepository.save(history);
+    public List<SqlHistory> getRecentByConnectionId(Long userId, Long connectionId) {
+        return sqlHistoryRepository.findTop20ByUserIdAndConnectionIdOrderByCreatedAtDesc(userId, connectionId);
     }
 
-    public List<SqlHistory> getByConnectionId(Long connectionId) {
-        return sqlHistoryRepository.findByConnectionIdOrderByCreatedAtDesc(connectionId);
-    }
-
-    public List<SqlHistory> getRecentByConnectionId(Long connectionId) {
-        return sqlHistoryRepository.findTop20ByConnectionIdOrderByCreatedAtDesc(connectionId);
-    }
-
-    public List<SqlHistory> getBySessionId(String sessionId) {
-        return sqlHistoryRepository.findBySessionIdOrderByCreatedAtDesc(sessionId);
+    public List<SqlHistory> getBySessionId(Long userId, String sessionId) {
+        return sqlHistoryRepository.findByUserIdAndSessionIdOrderByCreatedAtDesc(userId, sessionId);
     }
 
     @Transactional
-    public void deleteByConnectionId(Long connectionId, Long historyId) {
+    public void deleteByConnectionId(Long userId, Long connectionId, Long historyId) {
         if (connectionId == null || historyId == null) {
             throw new IllegalArgumentException("connectionId and historyId are required");
         }
-        if (!sqlHistoryRepository.existsByIdAndConnectionId(historyId, connectionId)) {
-            throw new IllegalArgumentException("SQL history not found: " + historyId);
+        if (!sqlHistoryRepository.existsByIdAndConnectionIdAndUserId(historyId, connectionId, userId)) {
+            throw new IllegalArgumentException("SQL 历史不存在: " + historyId);
         }
-        sqlHistoryRepository.deleteByIdAndConnectionId(historyId, connectionId);
+        sqlHistoryRepository.deleteByIdAndConnectionIdAndUserId(historyId, connectionId, userId);
     }
 }

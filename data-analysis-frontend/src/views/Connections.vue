@@ -1,15 +1,15 @@
 <template>
   <div class="workspace-page">
     <section class="page-section">
-      <div class="section-head section-head-actions-only">
+      <div v-if="authStore.isAdmin" class="section-head section-head-actions-only">
         <div class="section-actions">
           <n-button type="primary" @click="openAddModal">添加连接</n-button>
         </div>
       </div>
 
-      <div v-if="connections.length > 0" class="connection-grid">
+      <div v-if="appStore.accessibleConnections.length > 0" class="connection-grid">
         <article
-          v-for="conn in connections"
+          v-for="conn in appStore.accessibleConnections"
           :key="conn.id"
           class="connection-surface"
           :class="{ selected: conn.id === appStore.currentConnectionId }"
@@ -28,7 +28,7 @@
           <div class="connection-facts">
             <div class="connection-fact">
               <span>数据库</span>
-              <strong>{{ conn.database }}</strong>
+              <strong>{{ conn.database || '-' }}</strong>
             </div>
             <div class="connection-fact">
               <span>用户名</span>
@@ -38,15 +38,24 @@
 
           <div class="connection-actions">
             <n-button size="small" @click.stop="testConnection(conn)">测试</n-button>
-            <n-button size="small" @click.stop="openEditModal(conn)">编辑</n-button>
-            <n-button size="small" type="error" secondary @click.stop="deleteConnection(conn)">删除</n-button>
+            <n-button v-if="authStore.isAdmin" size="small" @click.stop="openEditModal(conn)">编辑</n-button>
+            <n-button
+              v-if="authStore.isAdmin"
+              size="small"
+              type="error"
+              secondary
+              @click.stop="deleteConnection(conn)"
+            >
+              删除
+            </n-button>
           </div>
         </article>
       </div>
 
       <div v-else class="empty-panel">
-        <h3>还没有连接</h3>
-        <n-button type="primary" @click="openAddModal">添加第一个连接</n-button>
+        <h3>{{ authStore.isAdmin ? '还没有连接' : '当前没有可用连接' }}</h3>
+        <p v-if="!authStore.isAdmin">请联系管理员为当前账号分配数据库连接权限。</p>
+        <n-button v-if="authStore.isAdmin" type="primary" @click="openAddModal">添加第一个连接</n-button>
       </div>
     </section>
 
@@ -58,7 +67,7 @@
     >
       <n-form :model="formValue" label-placement="top">
         <n-form-item label="连接名称">
-          <n-input v-model:value="formValue.name" placeholder="例如：生产订单库" />
+          <n-input v-model:value="formValue.name" placeholder="例如：博客生产库" />
         </n-form-item>
         <n-form-item label="数据库类型">
           <n-select v-model:value="formValue.type" :options="dbTypeOptions" />
@@ -88,8 +97,8 @@
       <template #footer>
         <n-space justify="end">
           <n-button @click="showModal = false">取消</n-button>
-          <n-button @click="testNewConnection" :loading="testing">测试连接</n-button>
-          <n-button type="primary" @click="isEdit ? updateConnection() : addConnection()">保存</n-button>
+          <n-button :loading="testing" @click="testNewConnection">测试连接</n-button>
+          <n-button type="primary" @click="submitConnection">保存</n-button>
         </n-space>
       </template>
     </n-modal>
@@ -97,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NForm,
@@ -107,16 +116,30 @@ import {
   NModal,
   NSelect,
   NSpace,
+  useDialog,
   useMessage
 } from 'naive-ui'
 import axios from 'axios'
 import { encryptPassword } from '@/utils/crypto'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+
+type ConnectionItem = {
+  id: number
+  name: string
+  type: string
+  host: string
+  port: number
+  database: string
+  username: string
+  status: string
+}
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const message = useMessage()
+const dialog = useDialog()
 
-const connections = ref<any[]>([])
 const showModal = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
@@ -132,25 +155,7 @@ const defaultForm = {
   password: ''
 }
 
-const formValue = ref({ ...defaultForm })
-
-const defaultPorts: Record<string, number> = {
-  mysql: 3306,
-  doris: 9030,
-  postgresql: 5432,
-  oracle: 1521,
-  sqlserver: 1433,
-  clickhouse: 8123
-}
-
-watch(
-  () => formValue.value.type,
-  (newType) => {
-    if (defaultPorts[newType]) {
-      formValue.value.port = defaultPorts[newType]
-    }
-  }
-)
+const formValue = reactive({ ...defaultForm })
 
 const dbTypeOptions = [
   { label: 'MySQL', value: 'mysql' },
@@ -166,17 +171,43 @@ const modalTitle = computed(() => (isEdit.value ? '编辑数据连接' : '添加
 const formatDbType = (type: string) =>
   dbTypeOptions.find((item) => item.value === type)?.label || type
 
+watch(
+  () => formValue.type,
+  (value) => {
+    const defaultPorts: Record<string, number> = {
+      mysql: 3306,
+      doris: 9030,
+      postgresql: 5432,
+      oracle: 1521,
+      sqlserver: 1433,
+      clickhouse: 8123
+    }
+
+    if (defaultPorts[value]) {
+      formValue.port = defaultPorts[value]
+    }
+  }
+)
+
+const loadConnections = async () => {
+  await appStore.loadAccessibleConnections(authStore.user?.lastConnectionId ?? null)
+}
+
+const resetForm = () => {
+  Object.assign(formValue, defaultForm)
+  editingId.value = null
+}
+
 const openAddModal = () => {
   isEdit.value = false
-  editingId.value = null
-  formValue.value = { ...defaultForm }
+  resetForm()
   showModal.value = true
 }
 
-const openEditModal = (conn: any) => {
+const openEditModal = (conn: ConnectionItem) => {
   isEdit.value = true
   editingId.value = conn.id
-  formValue.value = {
+  Object.assign(formValue, {
     name: conn.name,
     type: conn.type,
     host: conn.host,
@@ -184,135 +215,99 @@ const openEditModal = (conn: any) => {
     database: conn.database,
     username: conn.username,
     password: ''
-  }
+  })
   showModal.value = true
 }
 
-const loadConnections = async () => {
-  try {
-    const res = await axios.get('/api/connections')
-    connections.value = res.data || []
-    if (appStore.currentConnectionId) {
-      const currentConnection = connections.value.find((item) => item.id === appStore.currentConnectionId)
-      if (currentConnection) {
-        appStore.setCurrentConnection(currentConnection.id, currentConnection.name)
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load connections', error)
-    message.error('加载连接列表失败')
+const buildPayload = () => {
+  const payload: Record<string, any> = { ...formValue }
+  if (payload.password) {
+    payload.password = encryptPassword(payload.password)
+  } else if (isEdit.value) {
+    delete payload.password
   }
+  return payload
 }
 
-const addConnection = async () => {
+const submitConnection = async () => {
   try {
-    const payload = {
-      ...formValue.value,
-      password: encryptPassword(formValue.value.password)
-    }
-    await axios.post('/api/connections', payload)
-    message.success('连接已添加')
-    showModal.value = false
-    await loadConnections()
-  } catch {
-    message.error('添加连接失败')
-  }
-}
-
-const updateConnection = async () => {
-  if (!editingId.value) {
-    return
-  }
-
-  try {
-    const payload: Record<string, any> = { ...formValue.value }
-    if (payload.password) {
-      payload.password = encryptPassword(payload.password)
+    const payload = buildPayload()
+    if (isEdit.value && editingId.value) {
+      await axios.put(`/api/connections/${editingId.value}`, payload)
+      message.success('连接已更新')
     } else {
-      delete payload.password
+      await axios.post('/api/connections', payload)
+      message.success('连接已创建')
     }
 
-    await axios.put(`/api/connections/${editingId.value}`, payload)
-    message.success('连接已更新')
     showModal.value = false
     await loadConnections()
-  } catch {
-    message.error('更新连接失败')
+  } catch (error: any) {
+    message.error(error?.response?.data?.message || '保存连接失败')
   }
 }
 
-const testConnection = async (conn: any) => {
+const testConnection = async (conn: ConnectionItem) => {
   try {
     const res = await axios.post(`/api/connections/${conn.id}/test`)
-    if (res.data) {
-      message.success('连接测试成功')
-    } else {
-      message.error('连接测试失败')
+    message[res.data ? 'success' : 'error'](res.data ? '连接测试成功' : '连接测试失败')
+    if (authStore.isAdmin) {
+      await loadConnections()
     }
-  } catch {
-    message.error('连接测试失败')
+  } catch (error: any) {
+    message.error(error?.response?.data?.message || '连接测试失败')
   }
 }
 
 const testNewConnection = async () => {
   testing.value = true
-
   try {
-    const payload: Record<string, any> = { ...formValue.value }
-
-    if (payload.password) {
-      payload.password = encryptPassword(payload.password)
-    } else if (isEdit.value) {
+    if (isEdit.value && !formValue.password) {
       message.warning('编辑模式下请填写密码后再测试')
-      testing.value = false
       return
     }
 
-    const res = await axios.post('/api/connections/test', payload)
-    if (res.data) {
-      message.success('连接测试成功')
-    } else {
-      message.error('连接测试失败')
-    }
-  } catch {
-    message.error('连接测试失败')
+    const res = await axios.post('/api/connections/test', buildPayload())
+    message[res.data ? 'success' : 'error'](res.data ? '连接测试成功' : '连接测试失败')
+  } catch (error: any) {
+    message.error(error?.response?.data?.message || '连接测试失败')
   } finally {
     testing.value = false
   }
 }
 
-const selectConnection = async (conn: any) => {
+const selectConnection = async (conn: ConnectionItem) => {
   if (appStore.currentConnectionId === conn.id) {
-    try {
-      await axios.post(`/api/connections/${conn.id}/deactivate`)
-      appStore.setCurrentConnection(null)
-      message.success('已取消当前连接')
-    } catch {
-      message.error('切换连接失败')
-    }
     return
   }
 
   try {
-    await axios.post(`/api/connections/${conn.id}/activate`)
-    appStore.setCurrentConnection(conn.id, conn.name)
+    await appStore.selectConnection(conn.id)
     message.success(`已切换到 ${conn.name}`)
-  } catch {
-    message.error('切换连接失败')
+  } catch (error: any) {
+    message.error(error?.response?.data?.message || '切换连接失败')
   }
 }
 
-const deleteConnection = async (conn: any) => {
-  try {
-    await axios.delete(`/api/connections/${conn.id}`)
-    if (conn.id === appStore.currentConnectionId) {
-      appStore.setCurrentConnection(null)
+const deleteConnection = (conn: ConnectionItem) => {
+  dialog.warning({
+    title: '删除连接',
+    content: `确认删除连接“${conn.name}”吗？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await axios.delete(`/api/connections/${conn.id}`)
+        if (conn.id === appStore.currentConnectionId) {
+          await appStore.selectConnection(null)
+        }
+        message.success('连接已删除')
+        await loadConnections()
+      } catch (error: any) {
+        message.error(error?.response?.data?.message || '删除连接失败')
+      }
     }
-    message.success('连接已删除')
-    await loadConnections()
-  } catch {
-    message.error('删除连接失败')
-  }
+  })
 }
 
 onMounted(() => {

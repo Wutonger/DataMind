@@ -37,21 +37,23 @@ public class AgentToolsetFactory {
     private final SaveMarkdownReportToolService saveMarkdownReportToolService;
     private final AgentSkillHookFactory agentSkillHookFactory;
 
-    public AgentToolset createChatToolset(Long connectionId, String userInput) {
-        return buildToolset(buildAllCallbacks(connectionId, userInput));
+    public AgentToolset createChatToolset(Long userId, Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(userId, connectionId, userInput));
     }
 
-    public AgentToolset createSqlToolset(Long connectionId, String userInput) {
-        return buildToolset(buildAllCallbacks(connectionId, userInput).stream()
+    public AgentToolset createSqlToolset(Long userId, Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(userId, connectionId, userInput).stream()
                 .filter(callback -> {
                     String toolName = callback.getToolDefinition().name();
-                    return isKnowledgeTool(toolName) || isSchemaTool(toolName);
+                    return isKnowledgeTool(toolName)
+                            || isSchemaTool(toolName)
+                            || isDbExecuteTool(toolName);
                 })
                 .toList());
     }
 
-    public AgentToolset createReportToolset(Long connectionId, String userInput) {
-        return buildToolset(buildAllCallbacks(connectionId, userInput).stream()
+    public AgentToolset createReportToolset(Long userId, Long connectionId, String userInput) {
+        return buildToolset(buildAllCallbacks(userId, connectionId, userInput).stream()
                 .filter(callback -> {
                     String toolName = callback.getToolDefinition().name();
                     return isKnowledgeTool(toolName)
@@ -65,7 +67,7 @@ public class AgentToolsetFactory {
     /**
      * 统一组装 MCP 工具与项目内置工具。
      */
-    private List<ToolCallback> buildAllCallbacks(Long connectionId, String userInput) {
+    private List<ToolCallback> buildAllCallbacks(Long userId, Long connectionId, String userInput) {
         if (connectionId == null) {
             return List.of();
         }
@@ -82,8 +84,8 @@ public class AgentToolsetFactory {
         }
 
         toolCallbacks.add(buildKnowledgeSearchTool(connectionId, userInput));
-        toolCallbacks.add(buildSaveChartReportTool(connectionId, userInput));
-        toolCallbacks.add(buildSaveMarkdownReportTool(connectionId, userInput));
+        toolCallbacks.add(buildSaveChartReportTool(userId, connectionId, userInput));
+        toolCallbacks.add(buildSaveMarkdownReportTool(userId, connectionId, userInput));
         return toolCallbacks;
     }
 
@@ -144,24 +146,24 @@ public class AgentToolsetFactory {
                 .build();
     }
 
-    private ToolCallback buildSaveChartReportTool(Long connectionId, String userInput) {
+    private ToolCallback buildSaveChartReportTool(Long userId, Long connectionId, String userInput) {
         return FunctionToolCallback
                 .builder(
                         SaveChartReportToolService.TOOL_NAME,
                         (BiFunction<SaveChartReportInput, ToolContext, Map<String, Object>>) (input, toolContext) ->
-                                saveChartReportToolService.execute(connectionId, userInput, input, toolContext)
+                                saveChartReportToolService.execute(userId, connectionId, userInput, input, toolContext)
                 )
                 .description(SaveChartReportToolService.TOOL_DESCRIPTION)
                 .inputType(SaveChartReportInput.class)
                 .build();
     }
 
-    private ToolCallback buildSaveMarkdownReportTool(Long connectionId, String userInput) {
+    private ToolCallback buildSaveMarkdownReportTool(Long userId, Long connectionId, String userInput) {
         return FunctionToolCallback
                 .builder(
                         SaveMarkdownReportToolService.TOOL_NAME,
                         (BiFunction<SaveMarkdownReportInput, ToolContext, Map<String, Object>>) (input, toolContext) ->
-                                saveMarkdownReportToolService.execute(connectionId, userInput, input, toolContext)
+                                saveMarkdownReportToolService.execute(userId, connectionId, userInput, input, toolContext)
                 )
                 .description(SaveMarkdownReportToolService.TOOL_DESCRIPTION)
                 .inputType(SaveMarkdownReportInput.class)

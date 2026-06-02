@@ -11,9 +11,35 @@ CREATE TABLE IF NOT EXISTS `connections` (
   `username` VARCHAR(100) NOT NULL COMMENT 'Username',
   `password` VARCHAR(255) NOT NULL COMMENT 'Encrypted password',
   `status` VARCHAR(20) DEFAULT 'disconnected' COMMENT 'connected/disconnected/error',
+  `created_by` BIGINT DEFAULT NULL COMMENT 'Creator user ID',
+  `updated_by` BIGINT DEFAULT NULL COMMENT 'Updater user ID',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Database connections';
+
+CREATE TABLE IF NOT EXISTS `sys_user` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `username` VARCHAR(64) NOT NULL UNIQUE COMMENT 'Login username',
+  `password` VARCHAR(255) NOT NULL COMMENT 'BCrypt password hash',
+  `nickname` VARCHAR(64) DEFAULT NULL COMMENT 'Display name',
+  `role` VARCHAR(32) NOT NULL DEFAULT 'USER' COMMENT 'ADMIN/USER',
+  `status` VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/DISABLED',
+  `last_login_at` DATETIME DEFAULT NULL COMMENT 'Last login time',
+  `last_connection_id` BIGINT DEFAULT NULL COMMENT 'Last selected connection ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='System users';
+
+CREATE TABLE IF NOT EXISTS `connection_user_access` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `connection_id` BIGINT NOT NULL COMMENT 'Connection ID',
+  `user_id` BIGINT NOT NULL COMMENT 'User ID',
+  `created_by` BIGINT DEFAULT NULL COMMENT 'Operator user ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_connection_user_access` (`connection_id`, `user_id`),
+  KEY `idx_connection_access_user` (`user_id`),
+  KEY `idx_connection_access_connection` (`connection_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Connection access control';
 
 CREATE TABLE IF NOT EXISTS `table_metadata` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -32,6 +58,7 @@ CREATE TABLE IF NOT EXISTS `table_metadata` (
 
 CREATE TABLE IF NOT EXISTS `chat_sessions` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT 'Session ID',
+  `user_id` BIGINT NOT NULL COMMENT 'Owner user ID',
   `connection_id` BIGINT NOT NULL COMMENT 'Connection ID',
   `messages` JSON COMMENT 'Message history JSON',
   `summary` TEXT COMMENT 'Compressed summary',
@@ -64,6 +91,7 @@ CREATE TABLE IF NOT EXISTS `document_chunks` (
 
 CREATE TABLE IF NOT EXISTS `reports` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` BIGINT NOT NULL COMMENT 'Owner user ID',
   `connection_id` BIGINT DEFAULT NULL COMMENT 'Connection ID',
   `name` VARCHAR(200) NOT NULL COMMENT 'Report name',
   `config` JSON DEFAULT NULL COMMENT 'Chart config JSON',
@@ -75,6 +103,7 @@ CREATE TABLE IF NOT EXISTS `reports` (
 
 CREATE TABLE IF NOT EXISTS `sql_history` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` BIGINT NOT NULL COMMENT 'Owner user ID',
   `connection_id` BIGINT NOT NULL COMMENT 'Connection ID',
   `session_id` VARCHAR(36) DEFAULT NULL COMMENT 'Session ID',
   `sql` TEXT NOT NULL COMMENT 'SQL statement',
@@ -91,6 +120,7 @@ CREATE TABLE IF NOT EXISTS `workflow_runs` (
   `id` VARCHAR(64) PRIMARY KEY COMMENT 'Workflow run ID',
   `scene` VARCHAR(32) NOT NULL COMMENT 'chat/sql/analysis/report',
   `title` VARCHAR(120) NOT NULL COMMENT 'Workflow title',
+  `user_id` BIGINT DEFAULT NULL COMMENT 'Trigger user ID',
   `connection_id` BIGINT DEFAULT NULL COMMENT 'Related connection ID',
   `route_mode` VARCHAR(64) DEFAULT 'DATA_ONLY' COMMENT 'Final route mode',
   `status` VARCHAR(32) NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING/COMPLETED/FAILED/PENDING',

@@ -21,7 +21,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -64,10 +63,11 @@ public class AssistantAgentOrchestrator {
      * 处理聊天场景的流式输出，并在结束时返回完整执行结果。
      */
     public Flux<String> orchestrateStream(String conversationId,
+                                          Long userId,
                                           Long connectionId,
                                           String userInput,
+                                          List<Message> conversationMessages,
                                           ChatModel chatModel,
-                                          ChatMemory chatMemory,
                                           boolean reasoningEnabled,
                                           Consumer<ChatExecutionResult> completionCallback) {
         return Flux.create(emitter -> {
@@ -77,7 +77,7 @@ public class AssistantAgentOrchestrator {
             AtomicReference<ChatProcessStepTracker> chatProcessStepTrackerRef = new AtomicReference<>();
             StringBuilder responseBuilder = new StringBuilder();
             StringBuilder reasoningBuilder = new StringBuilder();
-            String workflowRunId = workflowRunTracker.startRun("chat", connectionId, summarizeTitle(userInput));
+            String workflowRunId = workflowRunTracker.startRun("chat", userId, connectionId, summarizeTitle(userInput));
             String setupStepId = workflowRunId + "-setup";
             String finalStepId = workflowRunId + "-final";
 
@@ -119,8 +119,9 @@ public class AssistantAgentOrchestrator {
                 chatProcessStepTrackerRef.set(chatProcessStepTracker);
                 chatProcessStepTracker.startInitialThinking();
 
-                List<Message> inputMessages = loadConversationMessages(conversationId, userInput, chatMemory);
+                List<Message> inputMessages = loadConversationMessages(conversationMessages, userInput);
                 Agent assistantAgent = buildChatAgent(
+                        userId,
                         connectionId,
                         userInput,
                         chatModel,
@@ -134,7 +135,10 @@ public class AssistantAgentOrchestrator {
 
                 RunnableConfig runnableConfig = RunnableConfig.builder()
                         .threadId(conversationId)
-                        .addStateUpdate(Map.of(ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId))
+                        .addStateUpdate(Map.of(
+                                ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId,
+                                ToolStateKeys.CURRENT_USER_ID, userId
+                        ))
                         .build();
 
                 log.info("Starting chat workflow. sessionId={}, connectionId={}", conversationId, connectionId);
@@ -266,10 +270,11 @@ public class AssistantAgentOrchestrator {
     /**
      * 处理 SQL 生成场景，返回最终 SQL 与执行链路编号。
      */
-    public SqlExecutionResult generateSql(Long connectionId,
+    public SqlExecutionResult generateSql(Long userId,
+                                          Long connectionId,
                                           String userInput,
                                           ChatModel chatModel) {
-        String workflowRunId = workflowRunTracker.startRun("sql", connectionId, summarizeTitle(userInput));
+        String workflowRunId = workflowRunTracker.startRun("sql", userId, connectionId, summarizeTitle(userInput));
         String setupStepId = workflowRunId + "-setup";
         String finalStepId = workflowRunId + "-final";
         List<Map<String, Object>> executedSteps = java.util.Collections.synchronizedList(new ArrayList<>());
@@ -289,12 +294,13 @@ public class AssistantAgentOrchestrator {
             );
             workflowRunTracker.addTimeline(workflowRunId, setupStepId, ASSISTANT_OWNER, "开始准备 SQL 生成任务");
 
-            Agent assistantAgent = buildSqlAgent(connectionId, userInput, chatModel, executedSteps, workflowRunId);
+            Agent assistantAgent = buildSqlAgent(userId, connectionId, userInput, chatModel, executedSteps, workflowRunId);
 
             RunnableConfig runnableConfig = RunnableConfig.builder()
                     .threadId(workflowRunId)
                     .addStateUpdate(Map.of(
-                            ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId
+                            ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId,
+                            ToolStateKeys.CURRENT_USER_ID, userId
                     ))
                     .build();
 
@@ -357,10 +363,11 @@ public class AssistantAgentOrchestrator {
     /**
      * 处理报表中心产物生成场景，返回图表或文档配置与落库信息。
      */
-    public ReportExecutionResult generateReport(Long connectionId,
+    public ReportExecutionResult generateReport(Long userId,
+                                                Long connectionId,
                                                 String userRequirement,
                                                 ChatModel chatModel) {
-        String workflowRunId = workflowRunTracker.startRun("report", connectionId, summarizeTitle(userRequirement));
+        String workflowRunId = workflowRunTracker.startRun("report", userId, connectionId, summarizeTitle(userRequirement));
         String setupStepId = workflowRunId + "-setup";
         String finalStepId = workflowRunId + "-final";
         List<Map<String, Object>> executedSteps = java.util.Collections.synchronizedList(new ArrayList<>());
@@ -381,12 +388,21 @@ public class AssistantAgentOrchestrator {
             );
             workflowRunTracker.addTimeline(workflowRunId, setupStepId, ASSISTANT_OWNER, "开始准备报表产物生成任务");
 
-            Agent assistantAgent = buildReportAgent(connectionId, userRequirement, chatModel, executedSteps, toolExecutions::add, workflowRunId);
+            Agent assistantAgent = buildReportAgent(
+                    userId,
+                    connectionId,
+                    userRequirement,
+                    chatModel,
+                    executedSteps,
+                    toolExecutions::add,
+                    workflowRunId
+            );
 
             RunnableConfig runnableConfig = RunnableConfig.builder()
                     .threadId(workflowRunId)
                     .addStateUpdate(Map.of(
-                            ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId
+                            ToolStateKeys.CURRENT_WORKFLOW_RUN_ID, workflowRunId,
+                            ToolStateKeys.CURRENT_USER_ID, userId
                     ))
                     .build();
 
@@ -515,7 +531,8 @@ public class AssistantAgentOrchestrator {
         });
     }
 
-    private Agent buildChatAgent(Long connectionId,
+    private Agent buildChatAgent(Long userId,
+                                 Long connectionId,
                                  String userInput,
                                  ChatModel chatModel,
                                  boolean reasoningEnabled,
@@ -524,7 +541,7 @@ public class AssistantAgentOrchestrator {
                                  List<KnowledgeCitationDTO> collectedCitations,
                                  String workflowRunId,
                                  ChatProcessStepTracker chatProcessStepTracker) {
-        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createChatToolset(connectionId, userInput);
+        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createChatToolset(userId, connectionId, userInput);
         StepTrackingToolInterceptor interceptor = buildTrackingInterceptor(
                 eventConsumer,
                 executedSteps,
@@ -546,12 +563,13 @@ public class AssistantAgentOrchestrator {
         );
     }
 
-    private Agent buildSqlAgent(Long connectionId,
+    private Agent buildSqlAgent(Long userId,
+                                Long connectionId,
                                 String userInput,
                                 ChatModel chatModel,
                                 List<Map<String, Object>> executedSteps,
                                 String workflowRunId) {
-        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createSqlToolset(connectionId, userInput);
+        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createSqlToolset(userId, connectionId, userInput);
 
         if (!toolset.hasSchemaTools()) {
             throw new IllegalStateException("No schema tools are available for the current connection. Please confirm MCP services are running.");
@@ -572,13 +590,14 @@ public class AssistantAgentOrchestrator {
         return buildReactAgent(PromptConstant.SQL_AGENT_PROMPT, chatModel, toolset.baseCallbacks(), interceptor, false, toolset.skillHook());
     }
 
-    private Agent buildReportAgent(Long connectionId,
+    private Agent buildReportAgent(Long userId,
+                                   Long connectionId,
                                    String userInput,
                                    ChatModel chatModel,
                                    List<Map<String, Object>> executedSteps,
-                                   Consumer<ToolExecutionRecord> toolResultConsumer,
-                                   String workflowRunId) {
-        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createReportToolset(connectionId, userInput);
+                                    Consumer<ToolExecutionRecord> toolResultConsumer,
+                                    String workflowRunId) {
+        AgentToolsetFactory.AgentToolset toolset = agentToolsetFactory.createReportToolset(userId, connectionId, userInput);
 
         if (!toolset.hasReportArtifactTools()) {
             throw new IllegalStateException("No report artifact tools are available. Please confirm the related skills are registered.");
@@ -682,10 +701,10 @@ public class AssistantAgentOrchestrator {
         }
     }
 
-    private List<Message> loadConversationMessages(String conversationId, String userInput, ChatMemory chatMemory) {
+    private List<Message> loadConversationMessages(List<Message> conversationMessages, String userInput) {
         List<Message> messages = new ArrayList<>();
-        if (chatMemory != null) {
-            messages.addAll(chatMemory.get(conversationId));
+        if (conversationMessages != null) {
+            messages.addAll(conversationMessages);
         }
 
         if (messages.isEmpty()) {

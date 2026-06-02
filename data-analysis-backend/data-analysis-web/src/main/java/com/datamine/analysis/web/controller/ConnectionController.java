@@ -1,7 +1,10 @@
 package com.datamine.analysis.web.controller;
 
+import com.datamine.analysis.common.dto.connection.ConnectionAccessDTO;
 import com.datamine.analysis.common.entity.Connection;
+import com.datamine.analysis.core.service.ConnectionAccessService;
 import com.datamine.analysis.core.service.ConnectionService;
+import com.datamine.analysis.core.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,69 +17,83 @@ import java.util.List;
 public class ConnectionController {
 
     private final ConnectionService connectionService;
+    private final ConnectionAccessService connectionAccessService;
+    private final CurrentUserService currentUserService;
 
     @GetMapping
     public ResponseEntity<List<Connection>> getAllConnections() {
+        currentUserService.checkAdmin();
         return ResponseEntity.ok(connectionService.getAllConnections());
+    }
+
+    @GetMapping("/accessible")
+    public ResponseEntity<List<Connection>> getAccessibleConnections() {
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        return ResponseEntity.ok(connectionAccessService.listAccessibleConnections(userId, admin));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Connection> getConnectionById(@PathVariable Long id) {
-        return connectionService.getConnectionById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/active")
-    public ResponseEntity<List<Connection>> getActiveConnections() {
-        return ResponseEntity.ok(connectionService.getActiveConnections());
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, id);
+        return ResponseEntity.ok(connectionService.getConnectionOrThrow(id));
     }
 
     @PostMapping
     public ResponseEntity<Connection> createConnection(@RequestBody Connection connection) {
-        Connection saved = connectionService.saveConnection(connection);
-        return ResponseEntity.ok(saved);
+        currentUserService.checkAdmin();
+        Long userId = currentUserService.getRequiredUserId();
+        return ResponseEntity.ok(connectionService.saveConnection(connection, userId));
     }
 
     @PostMapping("/test")
     public ResponseEntity<Boolean> testConnection(@RequestBody Connection connection) {
-        boolean success = connectionService.testConnection(connection);
-        return ResponseEntity.ok(success);
+        currentUserService.checkAdmin();
+        return ResponseEntity.ok(connectionService.testConnection(connection));
     }
 
     @PostMapping("/{id}/test")
     public ResponseEntity<Boolean> testSavedConnection(@PathVariable Long id) {
-        boolean success = connectionService.testSavedConnection(id);
-        return ResponseEntity.ok(success);
+        Long userId = currentUserService.getRequiredUserId();
+        boolean admin = currentUserService.isAdmin();
+        connectionAccessService.checkConnectionAccessible(userId, admin, id);
+        return ResponseEntity.ok(connectionService.testSavedConnection(id));
     }
 
     @PostMapping("/test-and-save")
     public ResponseEntity<Connection> testAndSaveConnection(@RequestBody Connection connection) {
-        Connection saved = connectionService.testAndSave(connection);
-        return ResponseEntity.ok(saved);
+        currentUserService.checkAdmin();
+        Long userId = currentUserService.getRequiredUserId();
+        return ResponseEntity.ok(connectionService.testAndSave(connection, userId));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Connection> updateConnection(@PathVariable Long id, @RequestBody Connection connection) {
-        Connection updated = connectionService.updateConnection(id, connection);
-        return ResponseEntity.ok(updated);
+        currentUserService.checkAdmin();
+        Long userId = currentUserService.getRequiredUserId();
+        return ResponseEntity.ok(connectionService.updateConnection(id, connection, userId));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteConnection(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         connectionService.deleteConnection(id);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/activate")
-    public ResponseEntity<Connection> activateConnection(@PathVariable Long id) {
-        Connection activated = connectionService.activateConnection(id);
-        return ResponseEntity.ok(activated);
+    @GetMapping("/{id}/access-users")
+    public ResponseEntity<ConnectionAccessDTO> getAccessUsers(@PathVariable Long id) {
+        currentUserService.checkAdmin();
+        return ResponseEntity.ok(new ConnectionAccessDTO(id, connectionAccessService.getAuthorizedUserIds(id)));
     }
 
-    @PostMapping("/{id}/deactivate")
-    public ResponseEntity<Void> deactivateConnection(@PathVariable Long id) {
-        connectionService.deactivateConnection(id);
-        return ResponseEntity.ok().build();
+    @PutMapping("/{id}/access-users")
+    public ResponseEntity<ConnectionAccessDTO> updateAccessUsers(@PathVariable Long id,
+                                                                 @RequestBody List<Long> userIds) {
+        currentUserService.checkAdmin();
+        Long operatorId = currentUserService.getRequiredUserId();
+        return ResponseEntity.ok(connectionAccessService.updateAuthorizedUsers(id, userIds, operatorId));
     }
 }

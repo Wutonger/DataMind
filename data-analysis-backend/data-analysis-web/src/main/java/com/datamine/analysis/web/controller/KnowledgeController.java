@@ -8,6 +8,7 @@ import com.datamine.analysis.common.dto.knowledge.KnowledgeSearchResponseDTO;
 import com.datamine.analysis.common.dto.knowledge.KnowledgeUploadFileDTO;
 import com.datamine.analysis.common.dto.knowledge.KnowledgeUploadRequestDTO;
 import com.datamine.analysis.common.service.KnowledgeBaseService;
+import com.datamine.analysis.core.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -36,10 +37,12 @@ import java.util.Map;
 public class KnowledgeController {
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final CurrentUserService currentUserService;
 
     @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadDocuments(@RequestParam Long connectionId,
                                              @RequestPart("files") MultipartFile[] files) {
+        currentUserService.checkAdmin();
         try {
             List<KnowledgeUploadFileDTO> uploadFiles = new java.util.ArrayList<>(files.length);
             for (MultipartFile file : files) {
@@ -56,6 +59,7 @@ public class KnowledgeController {
 
     @GetMapping("/documents")
     public ResponseEntity<?> listDocuments(@RequestParam Long connectionId) {
+        currentUserService.checkAdmin();
         try {
             return ResponseEntity.ok(knowledgeBaseService.listDocuments(connectionId));
         } catch (IllegalArgumentException e) {
@@ -65,6 +69,7 @@ public class KnowledgeController {
 
     @GetMapping("/documents/{id}")
     public ResponseEntity<?> getDocument(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         try {
             return ResponseEntity.ok(knowledgeBaseService.getDocument(id));
         } catch (IllegalArgumentException e) {
@@ -74,6 +79,7 @@ public class KnowledgeController {
 
     @GetMapping("/documents/{id}/preview")
     public ResponseEntity<?> previewDocument(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         try {
             KnowledgeDocumentPreviewDTO preview = knowledgeBaseService.previewDocument(id);
             return ResponseEntity.ok(preview);
@@ -84,6 +90,7 @@ public class KnowledgeController {
 
     @GetMapping("/documents/{id}/download")
     public ResponseEntity<?> downloadDocument(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         try {
             KnowledgeDocumentFileDTO file = knowledgeBaseService.getDocumentFile(id);
             String fileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8);
@@ -101,6 +108,7 @@ public class KnowledgeController {
 
     @DeleteMapping("/documents/{id}")
     public ResponseEntity<?> deleteDocument(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         try {
             knowledgeBaseService.deleteDocument(id);
             return ResponseEntity.noContent().build();
@@ -111,6 +119,7 @@ public class KnowledgeController {
 
     @PostMapping("/documents/{id}/reindex")
     public ResponseEntity<?> reindexDocument(@PathVariable Long id) {
+        currentUserService.checkAdmin();
         try {
             return ResponseEntity.ok(knowledgeBaseService.reindexDocument(id));
         } catch (IllegalArgumentException e) {
