@@ -8,8 +8,8 @@
     <div v-if="showThoughtPanel" class="thought-panel">
       <button type="button" class="thought-toggle" @click="toggleThoughtExpanded">
         <span class="thought-toggle-main">
-          <span class="thought-title">思考过程</span>
-          <span class="thought-summary" :class="{ 'is-waiting': isAwaitingFirstSignal }">
+          <span v-if="showThoughtTitle" class="thought-title">思考过程</span>
+          <span class="thought-summary" :class="{ 'is-waiting': isAwaitingFirstSignal, 'is-standalone': !showThoughtTitle }">
             {{ thoughtSummary }}
           </span>
         </span>
@@ -55,7 +55,7 @@
             <span v-if="!msg.reasoningEnabled" class="thought-muted">已关闭</span>
           </div>
 
-          <div v-if="formattedReasoning" class="reasoning-card" v-html="formattedReasoning"></div>
+          <div v-if="formattedReasoning" class="reasoning-card markdown-body" v-html="formattedReasoning"></div>
         </div>
       </div>
     </div>
@@ -174,10 +174,11 @@ const hasThoughtDetails = computed(
 )
 const isAwaitingFirstSignal = computed(() => props.live && !hasThoughtDetails.value)
 const showThoughtBody = computed(() => thoughtExpanded.value && hasThoughtDetails.value)
+const showThoughtTitle = computed(() => !props.live)
 
 const thoughtSummary = computed(() => {
   if (!timelineItems.value.length) {
-    return props.live ? '思考中' : '已完成'
+    return props.live ? '思考中' : ''
   }
 
   if (activeFinalizingItem.value) {
@@ -200,7 +201,11 @@ const thoughtSummary = computed(() => {
     return `已中断 · ${failedItem.label}`
   }
 
-  return `已完成 · 已调用 ${skillCount.value} 个技能、${toolCount.value} 个工具`
+  if (toolCount.value || skillCount.value) {
+    return `已调用 ${skillCount.value} 个技能、${toolCount.value} 个工具`
+  }
+
+  return ''
 })
 
 const showThoughtPanel = computed(() => props.msg.role !== 'user' && (timelineItems.value.length > 0 || props.live))
@@ -232,19 +237,26 @@ const toggleThoughtExpanded = () => {
 }
 
 watch(
-  [() => props.live, hasThoughtDetails],
-  ([live, hasDetails]) => {
-    if (live && !thoughtInteracted.value) {
-      thoughtExpanded.value = hasDetails
+  () => props.live,
+  (live) => {
+    if (live) {
+      if (!thoughtInteracted.value) {
+        thoughtExpanded.value = hasThoughtDetails.value
+      }
       return
     }
 
-    if (!live && !thoughtInteracted.value) {
-      thoughtExpanded.value = false
-    }
+    thoughtExpanded.value = false
+    thoughtInteracted.value = false
   },
   { immediate: true }
 )
+
+watch(hasThoughtDetails, (hasDetails) => {
+  if (props.live && !thoughtInteracted.value) {
+    thoughtExpanded.value = hasDetails
+  }
+})
 </script>
 
 <style scoped>
@@ -378,23 +390,40 @@ watch(
 }
 
 .thought-body {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-top: 4px;
-  padding: 0 0 0 2px;
+  margin: 8px 0 0 22px;
+  padding: 0 0 0 18px;
+}
+
+.thought-body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 12px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(239, 91, 42, 0.22) 0%,
+    rgba(239, 91, 42, 0.1) 38%,
+    rgba(23, 31, 58, 0.06) 100%
+  );
 }
 
 .thought-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .thought-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-left: 4px;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
@@ -409,7 +438,8 @@ watch(
 .timeline-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
+  padding-left: 8px;
 }
 
 .timeline-item {
@@ -491,6 +521,7 @@ watch(
 }
 
 .reasoning-card {
+  margin-left: 8px;
   padding: 14px 16px;
   border: 1px solid rgba(23, 31, 58, 0.08);
   border-radius: 14px;
@@ -607,6 +638,17 @@ watch(
 
   .thought-toggle-main {
     align-items: flex-start;
+  }
+
+  .thought-body {
+    margin-left: 14px;
+    padding-left: 14px;
+  }
+
+  .timeline-list,
+  .reasoning-card {
+    padding-left: 0;
+    margin-left: 4px;
   }
 
   .sources-links {

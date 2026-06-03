@@ -34,7 +34,6 @@ public final class ChatProcessStepTracker {
 
     private int thinkingSequence = 0;
     private String activeThinkingStepId;
-    private boolean answerStreamingStarted = false;
     private boolean finalizingRecorded = false;
 
     public ChatProcessStepTracker(String workflowRunId,
@@ -71,32 +70,22 @@ public final class ChatProcessStepTracker {
      * 工具执行后，如果还没有开始正式回答，则补一条新的 thinking。
      */
     public synchronized void afterToolExecution() {
-        if (answerStreamingStarted || finalizingRecorded) {
+        if (finalizingRecorded) {
             return;
         }
         startThinking(FOLLOW_UP_THINKING_DESCRIPTION, "基于最新结果继续思考");
     }
 
     /**
-     * 一旦开始输出最终回答，就不再保留“正在思考”的运行态。
-     */
-    public synchronized void markAnswerStreamingStarted() {
-        if (answerStreamingStarted) {
-            return;
-        }
-        answerStreamingStarted = true;
-        completeActiveThinking("已开始输出回答");
-    }
-
-    /**
-     * 先快速补齐前端可见的“整理最终回答”步骤，不阻塞 SSE 收尾。
+     * 一旦开始输出最终回答，仅记录状态切换，不立即结束 thinking，
+     * 这样前端可以在正文流式输出时继续展示后续思考内容。
      */
     public synchronized void recordFinalizingStep(String stepId, String outputSummary) {
         if (finalizingRecorded) {
             return;
         }
 
-        markAnswerStreamingStarted();
+        completeActiveThinking("已完成思考，开始整理最终回答");
         finalizingRecorded = true;
 
         Map<String, Object> step = createStep(
@@ -154,7 +143,7 @@ public final class ChatProcessStepTracker {
     }
 
     private void startThinking(String description, String timelineMessage) {
-        if (StringUtils.hasText(activeThinkingStepId) || answerStreamingStarted || finalizingRecorded) {
+        if (StringUtils.hasText(activeThinkingStepId) || finalizingRecorded) {
             return;
         }
 

@@ -16,8 +16,6 @@
               v-model:value="usernameKeyword"
               clearable
               placeholder="输入用户名进行模糊搜索"
-              @keyup.enter="applyFilters"
-              @clear="applyFilters"
             />
           </div>
 
@@ -32,7 +30,7 @@
           </div>
         </div>
 
-        <div class="user-toolbar-actions">
+        <div v-if="false" class="user-toolbar-actions">
           <n-button secondary @click="applyFilters">查询</n-button>
           <n-button quaternary :disabled="!hasActiveFilters" @click="resetFilters">重置</n-button>
         </div>
@@ -242,7 +240,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   BanOutline,
   CheckmarkCircleOutline,
@@ -315,6 +313,7 @@ const page = ref(1)
 const pageSize = ref(10)
 const statusFilter = ref<string | null>(null)
 const totalUsers = ref(0)
+let usernameFilterTimer: number | null = null
 
 const statusOptions = [
   { label: '启用', value: 'ACTIVE' },
@@ -385,15 +384,26 @@ const applyFilters = async () => {
   await loadUsers(1, pageSize.value)
 }
 
+const resetFilters = applyFilters
+
 const handleStatusFilterChange = async (value: string | null) => {
   statusFilter.value = value
   await applyFilters()
 }
 
-const resetFilters = async () => {
-  usernameKeyword.value = ''
-  statusFilter.value = null
-  await loadUsers(1, pageSize.value)
+const clearUsernameFilterTimer = () => {
+  if (usernameFilterTimer !== null) {
+    window.clearTimeout(usernameFilterTimer)
+    usernameFilterTimer = null
+  }
+}
+
+const scheduleKeywordFilter = () => {
+  clearUsernameFilterTimer()
+  usernameFilterTimer = window.setTimeout(() => {
+    void applyFilters()
+    usernameFilterTimer = null
+  }, 220)
 }
 
 const resetUserForm = () => {
@@ -531,6 +541,20 @@ const removeUser = (user: UserItem) => {
 
 onMounted(() => {
   void loadUsers()
+})
+
+watch(
+  usernameKeyword,
+  (value, previousValue) => {
+    if (value === previousValue) {
+      return
+    }
+    scheduleKeywordFilter()
+  }
+)
+
+onBeforeUnmount(() => {
+  clearUsernameFilterTimer()
 })
 </script>
 

@@ -107,6 +107,10 @@
               {{ statusLabel(selectedRun.status) }}
             </n-tag>
           </div>
+          <div v-if="showRunUserColumn" class="workflow-detail-fact">
+            <span>触发人</span>
+            <strong>{{ resolveRunUserLabel(selectedRun) }}</strong>
+          </div>
           <div class="workflow-detail-fact">
             <span>触发时间</span>
             <strong>{{ formatDateTime(selectedRun.startedAt) }}</strong>
@@ -196,6 +200,7 @@ import {
 import { workflowApi } from '@/api'
 import type { WorkflowRun } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 
 type WorkflowScene = 'chat' | 'sql' | 'analysis' | 'report'
 
@@ -210,6 +215,7 @@ interface SceneMeta {
 const router = useRouter()
 const route = useRoute()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const sceneMetaList: SceneMeta[] = [
   {
@@ -265,6 +271,7 @@ const normalizeScene = (value: unknown): WorkflowScene => {
 const activeScene = computed<WorkflowScene>(() => normalizeScene(route.query.scene))
 const activeSceneMeta = computed(() => sceneMetaList.find((item) => item.key === activeScene.value) || sceneMetaList[0])
 const queryRunId = computed(() => String(route.query.runId || '').trim())
+const showRunUserColumn = computed(() => authStore.isAdmin)
 
 const filteredRuns = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
@@ -273,7 +280,9 @@ const filteredRuns = computed(() => {
     const matchesKeyword =
       !normalizedKeyword ||
       run.title.toLowerCase().includes(normalizedKeyword) ||
-      run.id.toLowerCase().includes(normalizedKeyword)
+      run.id.toLowerCase().includes(normalizedKeyword) ||
+      run.username?.toLowerCase().includes(normalizedKeyword) ||
+      run.nickname?.toLowerCase().includes(normalizedKeyword)
     const matchesStatus = !statusFilter.value || run.status === statusFilter.value
 
     return matchesKeyword && matchesStatus
@@ -365,6 +374,37 @@ const columns: DataTableColumns<WorkflowRun> = [
       )
   }
 ]
+
+const resolveRunUserLabel = (run: WorkflowRun) => {
+  return run.username?.trim() || run.nickname?.trim() || '--'
+}
+
+const buildRunUserColumn = (): DataTableColumns<WorkflowRun>[number] => ({
+    title: '触发人',
+    key: 'username',
+    width: 120,
+    render: (run: WorkflowRun) => h('span', { class: 'workflow-user-cell' }, resolveRunUserLabel(run))
+})
+
+const syncRunUserColumn = (visible: boolean) => {
+  const currentIndex = columns.findIndex(
+    (column) => 'key' in column && column.key === 'username'
+  )
+  if (visible && currentIndex === -1) {
+    columns.splice(2, 0, buildRunUserColumn())
+  }
+  if (!visible && currentIndex !== -1) {
+    columns.splice(currentIndex, 1)
+  }
+}
+
+watch(
+  showRunUserColumn,
+  (visible) => {
+    syncRunUserColumn(visible)
+  },
+  { immediate: true }
+)
 
 const rowKey = (run: WorkflowRun) => run.id
 
@@ -695,6 +735,13 @@ watch(
   font-size: 12px;
   line-height: 1.5;
   word-break: break-all;
+}
+
+.workflow-user-cell {
+  display: block;
+  color: var(--text-color);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .workflow-table-empty {

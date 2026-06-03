@@ -746,9 +746,6 @@ public class AssistantAgentOrchestrator {
             return;
         }
 
-        if (chatProcessStepTracker != null) {
-            chatProcessStepTracker.markAnswerStreamingStarted();
-        }
         responseBuilder.append(chunk);
         eventConsumer.accept(toJsonEvent("ANSWER_DELTA", Map.of("token", chunk)));
     }
