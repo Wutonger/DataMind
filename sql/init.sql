@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS `chat_sessions` (
   `connection_id` BIGINT NOT NULL COMMENT 'Connection ID',
   `messages` JSON COMMENT 'Message history JSON',
   `summary` TEXT COMMENT 'Compressed summary',
+  `compressed_at` DATETIME DEFAULT NULL COMMENT 'Compression timestamp',
+  `compressed_messages` JSON COMMENT 'Compressed original messages',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Chat sessions';
@@ -179,3 +181,7 @@ CREATE TABLE IF NOT EXISTS `app_config` (
 
 INSERT INTO `app_config` (`config_key`, `config_value`, `description`) VALUES
 ('ai.model.default', '{"provider":"openai","baseUrl":"https://api.openai.com/v1","apiKey":"","model":"gpt-4o","embeddingModel":"text-embedding-3-small","temperature":0.7}', 'Default AI model config');
+
+-- Add compressed_at column to existing chat_sessions table (for migration)
+-- ALTER TABLE `chat_sessions` ADD COLUMN `compressed_at` DATETIME DEFAULT NULL COMMENT 'Compression timestamp' AFTER `summary`;
+-- ALTER TABLE `chat_sessions` ADD COLUMN `compressed_messages` JSON COMMENT 'Compressed original messages' AFTER `compressed_at`;

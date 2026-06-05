@@ -24,6 +24,12 @@ public class ChatSession {
     @Column(columnDefinition = "TEXT")
     private String summary;
 
+    @Column(name = "compressed_at")
+    private LocalDateTime compressedAt;
+
+    @Column(name = "compressed_messages", columnDefinition = "JSON")
+    private String compressedMessages;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

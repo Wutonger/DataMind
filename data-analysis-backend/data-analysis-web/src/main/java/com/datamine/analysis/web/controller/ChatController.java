@@ -1,6 +1,7 @@
 package com.datamine.analysis.web.controller;
 
 import com.datamine.analysis.common.dto.ChatRequest;
+import com.datamine.analysis.common.dto.chat.ChatHistoryResponse;
 import com.datamine.analysis.common.entity.ChatSession;
 import com.datamine.analysis.core.service.ChatService;
 import com.datamine.analysis.core.service.ConnectionAccessService;
@@ -38,9 +39,9 @@ public class ChatController {
     }
 
     @GetMapping("/history/{sessionId}")
-    public ResponseEntity<List<Map<String, Object>>> getHistory(@PathVariable String sessionId) {
+    public ResponseEntity<ChatHistoryResponse> getHistory(@PathVariable String sessionId) {
         Long userId = currentUserService.getRequiredUserId();
-        return ResponseEntity.ok(chatService.getHistoryWithSteps(userId, sessionId));
+        return ResponseEntity.ok(chatService.getHistoryWithCompressionInfo(userId, sessionId));
     }
 
     @DeleteMapping("/history/{sessionId}")

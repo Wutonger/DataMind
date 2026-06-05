@@ -55,7 +55,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private static final Set<String> SUPPORTED_TYPES = Set.of("pdf", "txt", "md", "markdown", "docx");
     private static final int CHUNK_SIZE = 800;
     private static final int CHUNK_OVERLAP = 120;
-    private static final int RETRIEVAL_TOP_K = 3;
+    private static final int RETRIEVAL_TOP_K = 2;           // 最多返回 2 个文档
+    private static final int RETRIEVAL_TOP_K_PER_DOC = 2;   // 每个文档最多 2 个片段
     private static final double RETRIEVAL_THRESHOLD = 0.5D;
     private static final Path STORAGE_ROOT = Path.of("storage", "knowledge");
     private static final ParagraphAwareCharacterTextSplitter KNOWLEDGE_TEXT_SPLITTER =
@@ -157,20 +158,35 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         float[] queryEmbedding = embeddingModelFactory.getEmbeddingModel().embed(question);
-        List<KnowledgeCitationDTO> citations = candidateChunks.stream()
+        // 1. 计算所有片段分数并过滤阈值
+        List<ScoredCitation> scoredCitations = candidateChunks.stream()
                 .map(chunk -> scoreChunk(chunk, documentMap.get(chunk.getDocumentId()), queryEmbedding))
                 .filter(Objects::nonNull)
                 .filter(scored -> scored.score() >= RETRIEVAL_THRESHOLD)
-                .collect(Collectors.toMap(
-                        scored -> scored.citation().documentId(),
-                        scored -> scored,
-                        (left, right) -> left.score() >= right.score() ? left : right,
-                        LinkedHashMap::new))
-                .values()
-                .stream()
                 .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
+                .toList();
+
+        // 2. 按文档分组，每组取前 N 个片段
+        Map<Long, List<ScoredCitation>> byDocument = scoredCitations.stream()
+                .collect(Collectors.groupingBy(
+                        scored -> scored.citation().documentId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        // 3. 按文档最高分排序，取前 M 个文档
+        List<Long> topDocumentIds = byDocument.entrySet().stream()
+                .sorted((e1, e2) -> Double.compare(
+                        e2.getValue().get(0).score(),
+                        e1.getValue().get(0).score()))
                 .limit(RETRIEVAL_TOP_K)
-                .map(ScoredCitation::citation)
+                .map(Map.Entry::getKey)
+                .toList();
+
+        // 4. 收集结果：每个文档最多取 N 个片段
+        List<KnowledgeCitationDTO> citations = topDocumentIds.stream()
+                .flatMap(docId -> byDocument.get(docId).stream()
+                        .limit(RETRIEVAL_TOP_K_PER_DOC)
+                        .map(ScoredCitation::citation))
                 .toList();
 
         logKnowledgeSearch(question, !citations.isEmpty(), citations.size(), citations.isEmpty() ? "no_match" : "matched");

@@ -17,6 +17,60 @@
         </div>
 
         <template v-else>
+          <!-- 被压缩的原始消息 -->
+          <template v-if="compressedMessages.length > 0">
+            <ChatMessage
+              v-for="(msg, index) in compressedMessages"
+              :key="`compressed-${index}`"
+              :msg="{
+                id: `compressed-${index}`,
+                role: msg.role === 'user' ? 'user' : 'assistant',
+                content: msg.content || '',
+                reasoning: msg.reasoning || '',
+                reasoningEnabled: Boolean(msg.reasoning),
+                steps: msg.steps || [],
+                citations: msg.citations || []
+              }"
+              :live="false"
+              :steps="msg.steps || []"
+              :completed-steps="(msg.steps || []).filter((s: any) => s.status === 'COMPLETED' || s.status === 'FAILED' || s.status === 'SKIPPED').length"
+              @open-citation="openCitationPreview"
+            />
+          </template>
+          
+          <!-- 压缩分隔线 -->
+          <div v-if="compressionSummary" class="compression-divider">
+            <div class="compression-line"></div>
+            <button 
+              class="compression-toggle"
+              @click="showCompressionSummary = !showCompressionSummary"
+            >
+              <span class="compression-text">
+                {{ showCompressionSummary ? '收起摘要' : '之前的对话已压缩' }}
+              </span>
+              <span v-if="compressionTime" class="compression-time">{{ compressionTime }}</span>
+              <span class="compression-icon">
+                <svg v-if="!showCompressionSummary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </span>
+            </button>
+          </div>
+          
+          <!-- 可展开的摘要 -->
+          <Transition name="summary-expand">
+            <div v-if="showCompressionSummary && compressionSummary" class="compression-summary">
+              <div class="summary-header">
+                <span class="summary-badge">对话摘要</span>
+              </div>
+              <div class="summary-content">{{ compressionSummary }}</div>
+            </div>
+          </Transition>
+          
+          <!-- 保留的最近消息 -->
           <ChatMessage
             v-for="messageItem in renderedMessages"
             :key="messageItem.id"
@@ -57,7 +111,7 @@
           class="composer-textarea"
           placeholder="输入问题，例如：结合知识库和当前数据库，分析博客内容表现"
           :autosize="{ minRows: 3, maxRows: 8 }"
-          :disabled="loading"
+          :disabled="loading || compressing"
           @keydown="handleKeydown"
         />
 
@@ -67,7 +121,7 @@
             type="primary"
             size="large"
             :loading="loading"
-            :disabled="!inputMessage.trim()"
+            :disabled="!inputMessage.trim() || compressing"
             @click="sendMessage"
           >
             <template #icon><PaperPlaneOutline /></template>
@@ -236,6 +290,11 @@ const knowledgePreviewLoading = ref(false)
 const knowledgePreviewData = ref<KnowledgePreview | null>(null)
 const knowledgePreviewDocumentId = ref<number | null>(null)
 const activeKnowledgeChunkIndex = ref<number | null>(null)
+// 压缩相关状态
+const compressionSummary = ref<string | null>(null)
+const compressionTime = ref<string | null>(null)
+const showCompressionSummary = ref(false)
+const compressedMessages = ref<Array<Map<string, any>>>([])
 
 let messageIdSeed = 0
 let historyAutoScrollTimer: number | null = null
@@ -575,7 +634,7 @@ const scrollHistoryToBottom = () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
+  if (event.key === 'Enter' && !event.shiftKey && !loading.value && !compressing.value) {
     event.preventDefault()
     sendMessage()
   }
@@ -587,6 +646,10 @@ const initSession = () => {
   messages.value = []
   currentAssistantMsg.value = null
   latestWorkflowRunId.value = ''
+  compressionSummary.value = null
+  compressionTime.value = null
+  showCompressionSummary.value = false
+  compressedMessages.value = []
 }
 
 const openWorkflowPage = () => {
@@ -646,8 +709,14 @@ const loadSessions = async () => {
 const loadSessionHistory = async (targetSessionId: string) => {
   try {
     const res = await chatApi.getHistory(targetSessionId)
-    if (Array.isArray(res.data)) {
-      messages.value = res.data.map((msg: any, index: number) => ({
+    // 处理新的响应格式
+    const data = res.data
+    const rawMessages = Array.isArray(data) ? data : (data.messages || [])
+    
+    // 过滤掉 system 消息（压缩摘要）
+    messages.value = rawMessages
+      .filter((msg: any) => msg.role !== 'system')
+      .map((msg: any, index: number) => ({
         id: msg.id || createMessageId(`history-${index}`),
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content || msg.text || '',
@@ -656,10 +725,14 @@ const loadSessionHistory = async (targetSessionId: string) => {
         steps: msg.steps || undefined,
         citations: msg.citations || undefined
       }))
-      scrollHistoryToBottom()
-    } else {
-      initSession()
-    }
+    
+    // 设置压缩信息
+    compressionSummary.value = data.summary || null
+    compressionTime.value = data.compressedAt || null
+    showCompressionSummary.value = false
+    compressedMessages.value = data.compressedMessages || []
+    
+    scrollHistoryToBottom()
   } catch (error) {
     console.error('Failed to load chat history', error)
     initSession()
@@ -1334,5 +1407,136 @@ onBeforeUnmount(() => {
   .chunk-viewer-actions {
     width: 100%;
   }
+}
+
+/* 压缩分隔线样式 */
+.compression-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 20px 0 16px;
+}
+
+.compression-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--line-strong);
+  opacity: 0.5;
+  z-index: 0;
+}
+
+.compression-toggle {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  margin: 0 auto;
+  border: none;
+  border-radius: 999px;
+  background: var(--background-elevated);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.compression-toggle:hover {
+  background: var(--surface-active);
+  color: var(--text-color);
+}
+
+.compression-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+  transition: transform 0.2s ease;
+}
+
+.compression-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.compression-text {
+  letter-spacing: 0.02em;
+}
+
+.compression-time {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+/* 压缩摘要样式 */
+.compression-summary {
+  margin: 0 0 20px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    var(--surface-subtle) 0%,
+    var(--background-muted) 100%
+  );
+  border: 1px solid var(--line-soft);
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.summary-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-content {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+/* 摘要展开动画 */
+.summary-expand-enter-active,
+.summary-expand-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.summary-expand-enter-from,
+.summary-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+  max-height: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.summary-expand-enter-to,
+.summary-expand-leave-from {
+  max-height: 500px;
 }
 </style>

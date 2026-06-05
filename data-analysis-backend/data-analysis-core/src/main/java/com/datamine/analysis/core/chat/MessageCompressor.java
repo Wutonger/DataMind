@@ -13,7 +13,9 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +24,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MessageCompressor {
 
-    private static final int MIN_MESSAGES_TO_COMPRESS = 5;
+    private static final int KEEP_RECENT_MESSAGES = 4;      // 保留最近 4 条消息（2 轮对话）
+    private static final int MIN_MESSAGES_TO_COMPRESS = 6;  // 至少 6 条消息才压缩
     private static final String SUMMARY_PREFIX = "之前对话摘要：";
     private static final String SUMMARY_SYSTEM_PROMPT = "请用简洁的语言总结以下对话内容，保留关键信息，例如数据库名、表名、查询条件和分析结论，控制在 200 字以内。";
 
@@ -32,25 +35,35 @@ public class MessageCompressor {
     private final ObjectMapper objectMapper;
 
     public CompressResult compress(Long userId, String sessionId) {
-        List<Message> messages = chatMemory.getMessages(userId, sessionId);
+        // 获取完整的原始消息（包含 reasoning、steps、citations）
+        List<Map<String, Object>> rawMessages = chatMemory.getRawMessages(userId, sessionId);
 
-        if (messages.size() <= MIN_MESSAGES_TO_COMPRESS) {
-            return new CompressResult(false, "消息数量不足，无需压缩", messages.size(), messages.size());
+        if (rawMessages.size() < MIN_MESSAGES_TO_COMPRESS) {
+            return new CompressResult(false, "消息数量不足，无需压缩", rawMessages.size(), rawMessages.size(), null);
         }
 
         log.info("Compressing conversation {} for user {}", sessionId, userId);
 
-        List<Message> conversationMessages = new ArrayList<>();
-        for (Message message : messages) {
-            if (!(message instanceof SystemMessage)) {
-                conversationMessages.add(message);
+        // 分离 system 消息和对话消息
+        List<Map<String, Object>> rawConversationMessages = new ArrayList<>();
+        for (Map<String, Object> msg : rawMessages) {
+            String role = (String) msg.get("role");
+            if (!"system".equals(role)) {
+                rawConversationMessages.add(msg);
             }
         }
 
-        if (conversationMessages.size() <= MIN_MESSAGES_TO_COMPRESS) {
-            return new CompressResult(false, "对话消息数量不足，无需压缩", messages.size(), messages.size());
+        // 对话消息不足，无需压缩
+        if (rawConversationMessages.size() <= KEEP_RECENT_MESSAGES) {
+            return new CompressResult(false, "对话消息数量不足，无需压缩", rawMessages.size(), rawMessages.size(), null);
         }
 
+        // 分割：需要压缩的 vs 保留的
+        int splitIndex = rawConversationMessages.size() - KEEP_RECENT_MESSAGES;
+        List<Map<String, Object>> rawToCompress = new ArrayList<>(rawConversationMessages.subList(0, splitIndex));
+        List<Map<String, Object>> rawToKeep = new ArrayList<>(rawConversationMessages.subList(splitIndex, rawConversationMessages.size()));
+
+        // 构建摘要请求
         String existingSummary = getExistingSummary(userId, sessionId);
         StringBuilder summaryBuilder = new StringBuilder();
         if (existingSummary != null && !existingSummary.isEmpty()) {
@@ -61,11 +74,13 @@ public class MessageCompressor {
         }
         summaryBuilder.append("新增的对话内容：\n");
 
-        for (Message message : conversationMessages) {
-            if (message instanceof UserMessage) {
-                summaryBuilder.append("用户: ").append(message.getText()).append('\n');
-            } else if (message instanceof AssistantMessage) {
-                summaryBuilder.append("助手: ").append(message.getText()).append('\n');
+        for (Map<String, Object> msg : rawToCompress) {
+            String role = (String) msg.get("role");
+            String content = (String) msg.get("content");
+            if ("user".equals(role)) {
+                summaryBuilder.append("用户: ").append(content).append('\n');
+            } else if ("assistant".equals(role)) {
+                summaryBuilder.append("助手: ").append(content).append('\n');
             }
         }
 
@@ -80,12 +95,20 @@ public class MessageCompressor {
                 summary = "暂无可用摘要。";
             }
 
-            saveSummary(userId, sessionId, summary);
-            replaceMessages(userId, sessionId, List.of(new SystemMessage(SUMMARY_PREFIX + "\n" + summary)));
-            return new CompressResult(true, "压缩成功", messages.size(), 1);
+            // 序列化被压缩的原始消息（保留完整信息）
+            String compressedMessagesJson = serializeRawMessages(rawToCompress);
+
+            // 构建保留消息的 JSON（保留完整信息）
+            String newMessagesJson = buildNewMessagesJson(summary, rawToKeep);
+
+            // 保存摘要、压缩时间和被压缩的消息
+            saveCompressionInfo(userId, sessionId, summary, compressedMessagesJson, newMessagesJson);
+
+            int newCount = 1 + rawToKeep.size(); // 摘要 + 保留的消息
+            return new CompressResult(true, "压缩成功", rawMessages.size(), newCount, summary);
         } catch (Exception e) {
             log.error("Failed to compress messages", e);
-            return new CompressResult(false, "压缩失败，原会话已保留", messages.size(), messages.size());
+            return new CompressResult(false, "压缩失败，原会话已保留", rawMessages.size(), rawMessages.size(), null);
         }
     }
 
@@ -95,31 +118,46 @@ public class MessageCompressor {
                 .orElse(null);
     }
 
-    private void saveSummary(Long userId, String sessionId, String summary) {
+    private void saveCompressionInfo(Long userId, String sessionId, String summary, 
+                                     String compressedMessagesJson, String newMessagesJson) {
         chatSessionRepository.findByIdAndUserId(sessionId, userId).ifPresent(session -> {
             session.setSummary(summary);
+            session.setCompressedAt(LocalDateTime.now());
+            session.setCompressedMessages(compressedMessagesJson);
+            session.setMessages(newMessagesJson);
             chatSessionRepository.save(session);
         });
     }
 
-    private void replaceMessages(Long userId, String sessionId, List<Message> compressed) {
-        chatSessionRepository.findByIdAndUserId(sessionId, userId).ifPresent(session -> {
-            List<Map<String, String>> serialized = new ArrayList<>();
-            for (Message message : compressed) {
-                serialized.add(Map.of(
-                        "role", message.getMessageType().getValue().toLowerCase(),
-                        "content", message.getText()
-                ));
-            }
-            try {
-                session.setMessages(objectMapper.writeValueAsString(serialized));
-                chatSessionRepository.save(session);
-            } catch (Exception e) {
-                log.error("Failed to replace messages after compression", e);
-            }
-        });
+    private String serializeRawMessages(List<Map<String, Object>> messages) {
+        try {
+            return objectMapper.writeValueAsString(messages);
+        } catch (Exception e) {
+            log.error("Failed to serialize raw messages", e);
+            return "[]";
+        }
     }
 
-    public record CompressResult(boolean compressed, String message, int beforeCount, int afterCount) {
+    private String buildNewMessagesJson(String summary, List<Map<String, Object>> rawToKeep) {
+        try {
+            List<Map<String, Object>> newMessages = new ArrayList<>();
+            
+            // 添加摘要 SystemMessage
+            Map<String, Object> summaryMsg = new LinkedHashMap<>();
+            summaryMsg.put("role", "system");
+            summaryMsg.put("content", SUMMARY_PREFIX + "\n" + summary);
+            newMessages.add(summaryMsg);
+            
+            // 添加保留的消息（保留完整信息）
+            newMessages.addAll(rawToKeep);
+            
+            return objectMapper.writeValueAsString(newMessages);
+        } catch (Exception e) {
+            log.error("Failed to build new messages JSON", e);
+            return "[]";
+        }
+    }
+
+    public record CompressResult(boolean compressed, String message, int beforeCount, int afterCount, String summary) {
     }
 }

@@ -120,7 +120,6 @@ import {
   useMessage
 } from 'naive-ui'
 import axios from 'axios'
-import { encryptPassword } from '@/utils/crypto'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
@@ -221,9 +220,8 @@ const openEditModal = (conn: ConnectionItem) => {
 
 const buildPayload = () => {
   const payload: Record<string, any> = { ...formValue }
-  if (payload.password) {
-    payload.password = encryptPassword(payload.password)
-  } else if (isEdit.value) {
+  // 密码由后端加密，前端传明文
+  if (!payload.password && isEdit.value) {
     delete payload.password
   }
   return payload
