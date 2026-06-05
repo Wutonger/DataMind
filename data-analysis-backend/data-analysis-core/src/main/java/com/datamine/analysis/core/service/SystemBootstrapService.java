@@ -24,7 +24,7 @@ public class SystemBootstrapService implements CommandLineRunner {
 
         SysUser admin = new SysUser();
         admin.setUsername("admin");
-        admin.setPassword(passwordHashService.hash("Admin@123456"));
+        admin.setPassword(passwordHashService.hash("123456"));
         admin.setNickname("系统管理员");
         admin.setRole(RoleConstants.ADMIN);
         admin.setStatus(RoleConstants.ACTIVE);

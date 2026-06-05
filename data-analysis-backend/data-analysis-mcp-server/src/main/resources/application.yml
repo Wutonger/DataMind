@@ -12,7 +12,7 @@ spring:
   datasource:
     url: ${MAIN_DB_URL:jdbc:mysql://localhost:3306/datamine?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
     username: ${MAIN_DB_USER:root}
-    password: ${MAIN_DB_PASSWORD:19971019lx}
+    password: ${MAIN_DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
