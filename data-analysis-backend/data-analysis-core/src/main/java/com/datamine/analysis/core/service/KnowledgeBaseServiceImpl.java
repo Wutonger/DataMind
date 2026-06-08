@@ -17,6 +17,7 @@ import com.datamine.analysis.common.repository.KnowledgeDocumentRepository;
 import com.datamine.analysis.common.service.KnowledgeBaseService;
 import com.datamine.analysis.core.chat.EmbeddingModelFactory;
 import com.datamine.analysis.core.util.ParagraphAwareCharacterTextSplitter;
+import com.datamine.analysis.core.util.StructuredMarkdownChunkSplitter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
@@ -26,7 +27,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.reader.TextReader;
-import org.springframework.ai.reader.markdown.MarkdownDocumentReader;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.core.io.FileSystemResource;
@@ -57,10 +57,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private static final int CHUNK_OVERLAP = 120;
     private static final int RETRIEVAL_TOP_K = 2;           // 最多返回 2 个文档
     private static final int RETRIEVAL_TOP_K_PER_DOC = 2;   // 每个文档最多 2 个片段
-    private static final double RETRIEVAL_THRESHOLD = 0.5D;
+    private static final double RETRIEVAL_THRESHOLD = 0.6D;
     private static final Path STORAGE_ROOT = Path.of("storage", "knowledge");
     private static final ParagraphAwareCharacterTextSplitter KNOWLEDGE_TEXT_SPLITTER =
             new ParagraphAwareCharacterTextSplitter(CHUNK_SIZE, CHUNK_OVERLAP);
+    private static final StructuredMarkdownChunkSplitter MARKDOWN_CHUNK_SPLITTER =
+            new StructuredMarkdownChunkSplitter(CHUNK_SIZE, CHUNK_OVERLAP);
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final DocumentChunkRepository documentChunkRepository;
@@ -135,14 +137,14 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         validateConnection(connectionId);
         String question = request.query();
         if (!StringUtils.hasText(question)) {
-            logKnowledgeSearch(question, false, 0, "empty_query");
+            logKnowledgeSearch(question, false, 0, null, "empty_query");
             return new KnowledgeSearchResponseDTO("", List.of());
         }
 
         List<KnowledgeDocument> readyDocuments = knowledgeDocumentRepository
                 .findByConnectionIdAndStatus(connectionId, "ready");
         if (readyDocuments.isEmpty()) {
-            logKnowledgeSearch(question, false, 0, "no_ready_documents");
+            logKnowledgeSearch(question, false, 0, null, "no_ready_documents");
             return new KnowledgeSearchResponseDTO("当前连接下还没有可用的知识库文档。", List.of());
         }
 
@@ -153,43 +155,32 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .toList();
 
         if (candidateChunks.isEmpty()) {
-            logKnowledgeSearch(question, false, 0, "no_candidate_chunks");
+            logKnowledgeSearch(question, false, 0, null, "no_candidate_chunks");
             return new KnowledgeSearchResponseDTO("当前连接下还没有可检索的知识分块。", List.of());
         }
 
         float[] queryEmbedding = embeddingModelFactory.getEmbeddingModel().embed(question);
-        // 1. 计算所有片段分数并过滤阈值
         List<ScoredCitation> scoredCitations = candidateChunks.stream()
                 .map(chunk -> scoreChunk(chunk, documentMap.get(chunk.getDocumentId()), queryEmbedding))
                 .filter(Objects::nonNull)
                 .filter(scored -> scored.score() >= RETRIEVAL_THRESHOLD)
-                .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
-                .toList();
-
-        // 2. 按文档分组，每组取前 N 个片段
-        Map<Long, List<ScoredCitation>> byDocument = scoredCitations.stream()
-                .collect(Collectors.groupingBy(
+                .collect(Collectors.toMap(
                         scored -> scored.citation().documentId(),
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
-        // 3. 按文档最高分排序，取前 M 个文档
-        List<Long> topDocumentIds = byDocument.entrySet().stream()
-                .sorted((e1, e2) -> Double.compare(
-                        e2.getValue().get(0).score(),
-                        e1.getValue().get(0).score()))
+                        scored -> scored,
+                        (left, right) -> left.score() >= right.score() ? left : right,
+                        LinkedHashMap::new))
+                .values()
+                .stream()
+                .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
                 .limit(RETRIEVAL_TOP_K)
-                .map(Map.Entry::getKey)
                 .toList();
 
-        // 4. 收集结果：每个文档最多取 N 个片段
-        List<KnowledgeCitationDTO> citations = topDocumentIds.stream()
-                .flatMap(docId -> byDocument.get(docId).stream()
-                        .limit(RETRIEVAL_TOP_K_PER_DOC)
-                        .map(ScoredCitation::citation))
+        List<KnowledgeCitationDTO> citations = scoredCitations.stream()
+                .map(ScoredCitation::citation)
                 .toList();
 
-        logKnowledgeSearch(question, !citations.isEmpty(), citations.size(), citations.isEmpty() ? "no_match" : "matched");
+        Double score = scoredCitations.isEmpty() ? null : roundScore(scoredCitations.get(0).score());
+        logKnowledgeSearch(question, !citations.isEmpty(), citations.size(), score, citations.isEmpty() ? "no_match" : "matched");
         return new KnowledgeSearchResponseDTO(buildSearchSummary(citations), citations);
     }
 
@@ -322,6 +313,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     private List<Document> splitDocuments(List<Document> rawDocuments, String type) {
+        return "md".equals(normalizeType(type))
+                ? splitMarkdownDocuments(rawDocuments, type)
+                : splitPlainDocuments(rawDocuments, type);
+    }
+
+    private List<Document> splitPlainDocuments(List<Document> rawDocuments, String type) {
         List<Document> normalized = new ArrayList<>();
         for (Document rawDocument : rawDocuments) {
             String sourceText = defaultString(rawDocument.getText());
@@ -342,6 +339,34 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
         if (normalized.isEmpty()) {
             throw new IllegalStateException("No chunk generated from document");
+        }
+        return normalized;
+    }
+
+    private List<Document> splitMarkdownDocuments(List<Document> rawDocuments, String type) {
+        List<Document> normalized = new ArrayList<>();
+        for (Document rawDocument : rawDocuments) {
+            String sourceText = defaultString(rawDocument.getText());
+            if (!StringUtils.hasText(sourceText)) {
+                continue;
+            }
+
+            Map<String, Object> metadata = sanitizeMetadata(rawDocument.getMetadata());
+            metadata.put("page", resolvePage(metadata));
+            metadata.put("sectionTitle", resolveSectionTitle(metadata));
+            metadata.put("sourceType", type);
+
+            List<Document> markdownChunks = MARKDOWN_CHUNK_SPLITTER.split(sourceText, metadata);
+            for (Document markdownChunk : markdownChunks) {
+                if (StringUtils.hasText(markdownChunk.getText())) {
+                    normalized.add(new Document(
+                            markdownChunk.getText(),
+                            sanitizeMetadata(markdownChunk.getMetadata())));
+                }
+            }
+        }
+        if (normalized.isEmpty()) {
+            throw new IllegalStateException("No chunk generated from markdown document");
         }
         return normalized;
     }
@@ -397,9 +422,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .collect(Collectors.joining("\n"));
     }
 
-    private void logKnowledgeSearch(String question, boolean matched, int hitCount, String reason) {
-        log.info("Knowledge search. question=\"{}\", matched={}, hitCount={}, reason={}",
-                normalizeQuestionForLog(question), matched, hitCount, reason);
+    private void logKnowledgeSearch(String question, boolean matched, int hitCount, Double score, String reason) {
+        log.info("Knowledge search. question=\"{}\", matched={}, hitCount={}, score={}, reason={}",
+                normalizeQuestionForLog(question), matched, hitCount, score, reason);
     }
 
     private String normalizeQuestionForLog(String question) {
@@ -544,6 +569,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         Map<String, Object> normalized = new LinkedHashMap<>();
         normalized.put("page", resolvePage(metadata));
         normalized.put("sectionTitle", resolveSectionTitle(metadata));
+        normalized.put("sectionPath", metadata.get("sectionPath"));
+        normalized.put("blockType", metadata.get("blockType"));
         normalized.put("sourceType", metadata.get("sourceType"));
         return sanitizeMetadata(normalized);
     }

@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS `app_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Application config';
 
 INSERT INTO `app_config` (`config_key`, `config_value`, `description`) VALUES
-('ai.model.default', '{"provider":"openai","baseUrl":"https://api.openai.com/v1","apiKey":"","model":"gpt-4o","embeddingModel":"text-embedding-3-small","temperature":0.7}', 'Default AI model config');
+('ai.model.default', '{"provider":"openai","baseUrl":"https://api.openai.com/v1","apiKey":"","model":"gpt-4o","embeddingModel":"text-embedding-3-small","temperature":0.7,"reasoningEnabled":true,"reasoningEffort":"medium"}', 'Default AI model config');
 
 -- Add compressed_at column to existing chat_sessions table (for migration)
 -- ALTER TABLE `chat_sessions` ADD COLUMN `compressed_at` DATETIME DEFAULT NULL COMMENT 'Compression timestamp' AFTER `summary`;

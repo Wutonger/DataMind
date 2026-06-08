@@ -43,8 +43,12 @@ public class AiConfigService {
                     cachedConfig.setEmbeddingModel("text-embedding-3-small");
                     changed = true;
                 }
-                if (cachedConfig.getReasoningEnabled() == null) {
-                    cachedConfig.setReasoningEnabled(Boolean.FALSE);
+                if (!Boolean.TRUE.equals(cachedConfig.getReasoningEnabled())) {
+                    cachedConfig.setReasoningEnabled(Boolean.TRUE);
+                    changed = true;
+                }
+                if (!StringUtils.hasText(cachedConfig.getReasoningEffort())) {
+                    cachedConfig.setReasoningEffort("medium");
                     changed = true;
                 }
                 if (changed) {
@@ -70,8 +74,9 @@ public class AiConfigService {
         if (!StringUtils.hasText(config.getEmbeddingModel())) {
             config.setEmbeddingModel("text-embedding-3-small");
         }
-        if (config.getReasoningEnabled() == null) {
-            config.setReasoningEnabled(Boolean.FALSE);
+        config.setReasoningEnabled(Boolean.TRUE);
+        if (!StringUtils.hasText(config.getReasoningEffort())) {
+            config.setReasoningEffort("medium");
         }
         cachedConfig = config;
         saveAiConfig(config);
@@ -108,7 +113,8 @@ public class AiConfigService {
         config.setModel("gpt-4o");
         config.setEmbeddingModel("text-embedding-3-small");
         config.setTemperature(0.7);
-        config.setReasoningEnabled(Boolean.FALSE);
+        config.setReasoningEnabled(Boolean.TRUE);
+        config.setReasoningEffort("medium");
         return config;
     }
 }

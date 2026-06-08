@@ -41,7 +41,8 @@
               <n-form-item label="模型">
                 <n-input v-model:value="aiConfig.model" placeholder="例如：gpt-4o" />
               </n-form-item>
-              <n-form-item label="温度">
+
+              <n-form-item label="回答灵活度">
                 <div class="settings-stepper">
                   <n-button
                     class="settings-stepper-button"
@@ -55,7 +56,7 @@
                   <div class="settings-stepper-display">
                     <span class="settings-stepper-value">{{ formatTemperature(aiConfig.temperature) }}</span>
                     <span class="settings-stepper-range">
-                      {{ formatTemperature(TEMPERATURE_MIN) }} - {{ formatTemperature(TEMPERATURE_MAX) }}
+                      越低越稳定，越高越灵活（{{ formatTemperature(TEMPERATURE_MIN) }} - {{ formatTemperature(TEMPERATURE_MAX) }}）
                     </span>
                   </div>
                   <n-button
@@ -69,20 +70,21 @@
                   </n-button>
                 </div>
               </n-form-item>
-              <n-form-item label="深度思考">
-                <div class="settings-toggle-row">
-                  <n-switch v-model:value="aiConfig.reasoningEnabled" />
-                  <span class="settings-toggle-text">
-                    {{ aiConfig.reasoningEnabled ? '已开启' : '已关闭' }}
-                  </span>
+
+              <n-form-item label="思考强度">
+                <div class="effort-selector" role="radiogroup" aria-label="思考强度">
+                  <button
+                    v-for="option in REASONING_EFFORT_OPTIONS"
+                    :key="option.value"
+                    type="button"
+                    class="effort-option"
+                    :class="{ active: aiConfig.reasoningEffort === option.value }"
+                    @click="aiConfig.reasoningEffort = option.value"
+                  >
+                    <span class="effort-option-label">{{ option.label }}</span>
+                    <span class="effort-option-desc">{{ option.description }}</span>
+                  </button>
                 </div>
-              </n-form-item>
-              <n-form-item v-if="aiConfig.reasoningEnabled" label="思考强度">
-                <n-select
-                  v-model:value="aiConfig.reasoningEffort"
-                  :options="REASONING_EFFORT_OPTIONS"
-                  placeholder="请选择思考强度"
-                />
               </n-form-item>
             </n-form>
           </div>
@@ -109,7 +111,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { configApi } from '@/api/config'
 
 const message = useMessage()
@@ -117,9 +119,9 @@ const TEMPERATURE_MIN = 0
 const TEMPERATURE_MAX = 2
 const TEMPERATURE_STEP = 0.1
 const REASONING_EFFORT_OPTIONS = [
-  { label: 'low', value: 'low' },
-  { label: 'medium', value: 'medium' },
-  { label: 'high', value: 'high' }
+  { label: 'low', value: 'low', description: '响应更快，适合普通问答' },
+  { label: 'medium', value: 'medium', description: '默认强度，兼顾速度与质量' },
+  { label: 'high', value: 'high', description: '更充分推理，适合复杂分析' }
 ]
 
 const aiConfig = ref({
@@ -129,7 +131,6 @@ const aiConfig = ref({
   model: 'gpt-4o',
   embeddingModel: 'text-embedding-3-small',
   temperature: 0.7,
-  reasoningEnabled: false,
   reasoningEffort: 'medium'
 })
 
@@ -165,7 +166,6 @@ const loadConfig = async () => {
       model: res.data?.model || aiConfig.value.model,
       embeddingModel: res.data?.embeddingModel || aiConfig.value.embeddingModel,
       temperature: normalizeTemperature(res.data?.temperature ?? aiConfig.value.temperature),
-      reasoningEnabled: Boolean(res.data?.reasoningEnabled),
       reasoningEffort: normalizeReasoningEffort(res.data?.reasoningEffort || aiConfig.value.reasoningEffort)
     }
   } catch (error) {
@@ -181,9 +181,8 @@ const saveConfig = async () => {
       model: aiConfig.value.model?.trim() || 'gpt-4o',
       embeddingModel: aiConfig.value.embeddingModel?.trim() || 'text-embedding-3-small',
       temperature: normalizeTemperature(aiConfig.value.temperature),
-      reasoningEffort: aiConfig.value.reasoningEnabled
-        ? normalizeReasoningEffort(aiConfig.value.reasoningEffort)
-        : 'medium'
+      reasoningEnabled: true,
+      reasoningEffort: normalizeReasoningEffort(aiConfig.value.reasoningEffort)
     })
     message.success('配置已保存')
   } catch {
@@ -286,16 +285,70 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-.settings-toggle-row {
-  display: inline-flex;
-  align-items: center;
+.effort-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  min-height: 40px;
 }
 
-.settings-toggle-text {
+.effort-option {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 96px;
+  padding: 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--background-elevated) 0%, var(--background-soft) 100%);
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.effort-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-accent);
+  background: linear-gradient(180deg, var(--background-elevated) 0%, var(--surface-subtle) 100%);
+  box-shadow: var(--shadow-lg);
+}
+
+.effort-option.active {
+  border-color: var(--border-accent-strong);
+  background: linear-gradient(180deg, var(--surface-active) 0%, rgba(255, 247, 241, 0.98) 100%);
+  box-shadow: 0 14px 30px rgba(239, 91, 42, 0.12);
+}
+
+.effort-option-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--primary-color-strong);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.effort-option.active .effort-option-label {
+  background: var(--surface-active-strong);
+}
+
+.effort-option-desc {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 @media (max-width: 960px) {
@@ -311,6 +364,10 @@ onMounted(() => {
 
   .settings-span-2 {
     grid-column: auto;
+  }
+
+  .effort-selector {
+    grid-template-columns: 1fr;
   }
 }
 </style>
