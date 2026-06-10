@@ -57,7 +57,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private static final int CHUNK_OVERLAP = 120;
     private static final int RETRIEVAL_TOP_K = 2;           // 最多返回 2 个文档
     private static final int RETRIEVAL_TOP_K_PER_DOC = 2;   // 每个文档最多 2 个片段
-    private static final double RETRIEVAL_THRESHOLD = 0.6D;
+    private static final double RETRIEVAL_THRESHOLD = 0.55D;
     private static final Path STORAGE_ROOT = Path.of("storage", "knowledge");
     private static final ParagraphAwareCharacterTextSplitter KNOWLEDGE_TEXT_SPLITTER =
             new ParagraphAwareCharacterTextSplitter(CHUNK_SIZE, CHUNK_OVERLAP);

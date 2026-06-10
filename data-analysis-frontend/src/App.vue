@@ -97,7 +97,7 @@
                   <component
                     v-if="!currentRoute.meta.keepAlive"
                     :is="Component"
-                    :key="String(currentRoute.fullPath)"
+                    :key="String(currentRoute.name || currentRoute.path)"
                   />
                 </router-view>
               </div>
