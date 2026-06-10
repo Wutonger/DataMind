@@ -908,9 +908,6 @@ onBeforeUnmount(() => {
 .analysis-scan-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 24px;
   background: var(--surface-overlay);
   backdrop-filter: blur(6px);
@@ -918,8 +915,11 @@ onBeforeUnmount(() => {
 }
 
 .analysis-scan-panel {
+  position: sticky;
+  top: clamp(96px, calc(50vh - 84px), 280px);
   min-width: 300px;
   max-width: 420px;
+  margin: 0 auto;
   padding: 24px 28px;
   border-radius: 22px;
   border: 1px solid var(--border-accent-soft);

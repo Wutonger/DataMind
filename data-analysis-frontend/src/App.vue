@@ -88,9 +88,17 @@
               <div class="workspace-body">
                 <router-view v-slot="{ Component, route: currentRoute }">
                   <keep-alive>
-                    <component v-if="currentRoute.meta.keepAlive" :is="Component" />
+                    <component
+                      v-if="currentRoute.meta.keepAlive"
+                      :is="Component"
+                      :key="String(currentRoute.name || currentRoute.path)"
+                    />
                   </keep-alive>
-                  <component v-if="!currentRoute.meta.keepAlive" :is="Component" />
+                  <component
+                    v-if="!currentRoute.meta.keepAlive"
+                    :is="Component"
+                    :key="String(currentRoute.fullPath)"
+                  />
                 </router-view>
               </div>
             </main>

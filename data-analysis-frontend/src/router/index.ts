@@ -38,17 +38,26 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/sql-studio',
     name: 'SqlStudio',
-    component: () => import('@/views/SqlStudio.vue')
+    component: () => import('@/views/SqlStudio.vue'),
+    meta: {
+      keepAlive: true
+    }
   },
   {
     path: '/analysis',
     name: 'Analysis',
-    component: () => import('@/views/Analysis.vue')
+    component: () => import('@/views/Analysis.vue'),
+    meta: {
+      keepAlive: true
+    }
   },
   {
     path: '/reports',
     name: 'Reports',
-    component: () => import('@/views/Reports.vue')
+    component: () => import('@/views/Reports.vue'),
+    meta: {
+      keepAlive: true
+    }
   },
   {
     path: '/workflow',
