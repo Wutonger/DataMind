@@ -160,19 +160,26 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         float[] queryEmbedding = embeddingModelFactory.getEmbeddingModel().embed(question);
-        List<ScoredCitation> scoredCitations = candidateChunks.stream()
+        Map<Long, List<ScoredCitation>> scoredByDocument = candidateChunks.stream()
                 .map(chunk -> scoreChunk(chunk, documentMap.get(chunk.getDocumentId()), queryEmbedding))
                 .filter(Objects::nonNull)
                 .filter(scored -> scored.score() >= RETRIEVAL_THRESHOLD)
-                .collect(Collectors.toMap(
+                .collect(Collectors.groupingBy(
                         scored -> scored.citation().documentId(),
-                        scored -> scored,
-                        (left, right) -> left.score() >= right.score() ? left : right,
-                        LinkedHashMap::new))
-                .values()
-                .stream()
-                .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
+                        LinkedHashMap::new,
+                        Collectors.collectingAndThen(Collectors.toList(), citations -> citations.stream()
+                                .sorted(Comparator.comparingDouble(ScoredCitation::score).reversed())
+                                .limit(RETRIEVAL_TOP_K_PER_DOC)
+                                .toList())
+                ));
+
+        List<ScoredCitation> scoredCitations = scoredByDocument.values().stream()
+                .filter(citations -> !citations.isEmpty())
+                .sorted(Comparator.<List<ScoredCitation>>comparingDouble(
+                        citations -> citations.get(0).score()
+                ).reversed())
                 .limit(RETRIEVAL_TOP_K)
+                .flatMap(List::stream)
                 .toList();
 
         List<KnowledgeCitationDTO> citations = scoredCitations.stream()
