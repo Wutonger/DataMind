@@ -1,5 +1,6 @@
 package com.datamine.analysis.agent.model;
 
+import com.datamine.analysis.common.dto.chat.ChatContextUsageResponse;
 import com.datamine.analysis.common.dto.knowledge.KnowledgeCitationDTO;
 
 import java.util.List;
@@ -12,6 +13,7 @@ public record ChatExecutionResult(
         String content,
         List<Map<String, Object>> steps,
         String reasoning,
-        List<KnowledgeCitationDTO> citations
+        List<KnowledgeCitationDTO> citations,
+        ChatContextUsageResponse contextUsage
 ) {
 }

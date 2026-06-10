@@ -99,6 +99,7 @@ import {
   TimeOutline
 } from '@vicons/ionicons5'
 import type { KnowledgeCitation } from '@/api'
+import type { AgentStep } from '@/api'
 import { renderMarkdownContent } from '@/utils/markdown'
 
 interface ChatProgressStep {
@@ -114,10 +115,12 @@ interface ChatProgressStep {
 const props = withDefaults(
   defineProps<{
     msg: {
+      id?: string
       role: string
       content: string
       reasoning?: string
       reasoningEnabled?: boolean
+      steps?: AgentStep[]
       citations?: KnowledgeCitation[]
     }
     live?: boolean

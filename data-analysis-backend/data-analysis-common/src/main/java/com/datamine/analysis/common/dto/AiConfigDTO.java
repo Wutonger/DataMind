@@ -12,4 +12,5 @@ public class AiConfigDTO {
     private Double temperature;
     private Boolean reasoningEnabled;
     private String reasoningEffort;
+    private Integer maxContextTokens;
 }

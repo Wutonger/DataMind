@@ -22,6 +22,7 @@ public class AgentSkillHookFactory {
 
     private static final String KNOWLEDGE_GROUNDING = "knowledge-grounding";
     private static final String ARTIFACT_GENERATION = "artifact-generation";
+    private static final String INSIGHT_DISCOVERY = "insight-discovery";
 
     private static final Set<String> GROUPED_TOOL_NAMES = Set.of(
             "knowledge_search",
@@ -50,6 +51,14 @@ public class AgentSkillHookFactory {
         return toolCallbacks.stream()
                 .filter(callback -> !isGroupedTool(callback.getToolDefinition().name()))
                 .toList();
+    }
+
+    public int resolveGroupedToolCount(String skillName) {
+        return switch (normalizeSkillName(skillName)) {
+            case KNOWLEDGE_GROUNDING -> 1;
+            case ARTIFACT_GENERATION -> 2;
+            default -> 0;
+        };
     }
 
     private Map<String, List<ToolCallback>> buildGroupedTools(List<ToolCallback> toolCallbacks) {
@@ -90,5 +99,9 @@ public class AgentSkillHookFactory {
             return "";
         }
         return name.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeSkillName(String name) {
+        return normalize(name).replace('_', '-');
     }
 }

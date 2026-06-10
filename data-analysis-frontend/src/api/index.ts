@@ -67,6 +67,7 @@ export interface AgentEvent {
     title?: string
     status?: string
     routeMode?: string
+    contextUsage?: ChatContextUsage
   }
 }
 
@@ -135,6 +136,19 @@ export interface KnowledgeSearchResponse {
   citations: KnowledgeCitation[]
 }
 
+export interface ChatContextUsage {
+  usedTokens: number
+  maxContextTokens?: number | null
+  safeBudgetTokens: number
+  usagePercent?: number | null
+  systemPromptTokens: number
+  messageTokens: number
+  messageCount: number
+  compressedMessageCount: number
+  compressed: boolean
+  warningLevel: 'normal' | 'warning' | 'danger'
+}
+
 export const chatApi = {
   send: (sessionId: string | null, connectionId: number | null, message: string) => {
     return fetch('/api/chat/send', {
@@ -144,6 +158,7 @@ export const chatApi = {
     })
   },
   getHistory: (sessionId: string) => axios.get(`/api/chat/history/${sessionId}`),
+  getContextUsage: (sessionId: string) => axios.get<ChatContextUsage>(`/api/chat/context/${sessionId}`),
   clearHistory: (sessionId: string) => axios.delete(`/api/chat/history/${sessionId}`),
   getSessions: (connectionId: number) => axios.get('/api/chat/sessions', { params: { connectionId } }),
   compress: (sessionId: string) => axios.post(`/api/chat/compress/${sessionId}`)

@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 public class AiConfigService {
 
     private static final String AI_CONFIG_KEY = "ai.model.default";
+    private static final int DEFAULT_MAX_CONTEXT_TOKENS = 128000;
 
     private final AppConfigRepository appConfigRepository;
     private final ObjectMapper objectMapper;
@@ -51,6 +52,10 @@ public class AiConfigService {
                     cachedConfig.setReasoningEffort("medium");
                     changed = true;
                 }
+                if (cachedConfig.getMaxContextTokens() == null || cachedConfig.getMaxContextTokens() <= 0) {
+                    cachedConfig.setMaxContextTokens(DEFAULT_MAX_CONTEXT_TOKENS);
+                    changed = true;
+                }
                 if (changed) {
                     saveAiConfig(cachedConfig);
                 }
@@ -77,6 +82,9 @@ public class AiConfigService {
         config.setReasoningEnabled(Boolean.TRUE);
         if (!StringUtils.hasText(config.getReasoningEffort())) {
             config.setReasoningEffort("medium");
+        }
+        if (config.getMaxContextTokens() == null || config.getMaxContextTokens() <= 0) {
+            config.setMaxContextTokens(DEFAULT_MAX_CONTEXT_TOKENS);
         }
         cachedConfig = config;
         saveAiConfig(config);
@@ -115,6 +123,7 @@ public class AiConfigService {
         config.setTemperature(0.7);
         config.setReasoningEnabled(Boolean.TRUE);
         config.setReasoningEffort("medium");
+        config.setMaxContextTokens(DEFAULT_MAX_CONTEXT_TOKENS);
         return config;
     }
 }

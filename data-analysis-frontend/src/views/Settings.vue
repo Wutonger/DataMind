@@ -86,6 +86,22 @@
                   </button>
                 </div>
               </n-form-item>
+
+              <n-form-item label="上下文上限">
+                <div class="effort-selector" role="radiogroup" aria-label="上下文上限">
+                  <button
+                    v-for="option in CONTEXT_WINDOW_OPTIONS"
+                    :key="option.value"
+                    type="button"
+                    class="effort-option"
+                    :class="{ active: normalizeMaxContextTokens(aiConfig.maxContextTokens) === option.value }"
+                    @click="aiConfig.maxContextTokens = String(option.value)"
+                  >
+                    <span class="effort-option-label">{{ option.label }}</span>
+                    <span class="effort-option-desc">{{ option.description }}</span>
+                  </button>
+                </div>
+              </n-form-item>
             </n-form>
           </div>
 
@@ -123,11 +139,17 @@ const REASONING_EFFORT_OPTIONS = [
   { label: 'medium', value: 'medium', description: '默认强度，兼顾速度与质量' },
   { label: 'high', value: 'high', description: '更充分推理，适合复杂分析' }
 ]
+const CONTEXT_WINDOW_OPTIONS = [
+  { label: '128k', value: 128000, description: '适合日常分析' },
+  { label: '200k', value: 200000, description: '适合长链推理' },
+  { label: '1M', value: 1000000, description: '适合超长上下文' }
+]
 
 const aiConfig = ref({
   provider: 'openai',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
+  maxContextTokens: '128000',
   model: 'gpt-4o',
   embeddingModel: 'text-embedding-3-small',
   temperature: 0.7,
@@ -153,6 +175,14 @@ const normalizeReasoningEffort = (value: string | undefined | null) => {
   return REASONING_EFFORT_OPTIONS.some(option => option.value === effort) ? effort : 'medium'
 }
 
+const normalizeMaxContextTokens = (value: string | number | null | undefined) => {
+  const numericValue = typeof value === 'number' ? value : Number(String(value || '').trim())
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return 128000
+  }
+  return Math.round(numericValue)
+}
+
 const adjustTemperature = (delta: number) => {
   aiConfig.value.temperature = normalizeTemperature(aiConfig.value.temperature + delta)
 }
@@ -163,6 +193,7 @@ const loadConfig = async () => {
     aiConfig.value = {
       ...aiConfig.value,
       ...res.data,
+      maxContextTokens: String(normalizeMaxContextTokens(res.data?.maxContextTokens ?? aiConfig.value.maxContextTokens)),
       model: res.data?.model || aiConfig.value.model,
       embeddingModel: res.data?.embeddingModel || aiConfig.value.embeddingModel,
       temperature: normalizeTemperature(res.data?.temperature ?? aiConfig.value.temperature),
@@ -178,6 +209,7 @@ const saveConfig = async () => {
   try {
     await configApi.updateAiConfig({
       ...aiConfig.value,
+      maxContextTokens: normalizeMaxContextTokens(aiConfig.value.maxContextTokens),
       model: aiConfig.value.model?.trim() || 'gpt-4o',
       embeddingModel: aiConfig.value.embeddingModel?.trim() || 'text-embedding-3-small',
       temperature: normalizeTemperature(aiConfig.value.temperature),
@@ -248,6 +280,11 @@ onMounted(() => {
   grid-template-columns: 1fr;
 }
 
+.settings-form-single :deep(.n-form-item-blank),
+.settings-form-single :deep(.n-form-item-feedback-wrapper) {
+  width: 100%;
+}
+
 .settings-span-2 {
   grid-column: 1 / -1;
 }
@@ -287,8 +324,9 @@ onMounted(() => {
 
 .effort-selector {
   display: grid;
+  width: 100%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .effort-option {
@@ -296,59 +334,63 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 4px;
   width: 100%;
-  min-height: 96px;
-  padding: 18px;
+  min-width: 0;
+  height: 60px;
+  padding: 10px 12px;
   border: 1px solid var(--line-soft);
-  border-radius: 18px;
-  background: linear-gradient(180deg, var(--background-elevated) 0%, var(--background-soft) 100%);
+  border-radius: 12px;
+  background: var(--background-elevated);
   color: var(--text-color);
   text-align: left;
   cursor: pointer;
-  box-shadow: var(--card-shadow);
+  box-shadow: none;
   transition:
     border-color 0.18s ease,
     transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background 0.18s ease;
+    background-color 0.18s ease;
 }
 
 .effort-option:hover {
-  transform: translateY(-1px);
-  border-color: var(--border-accent);
-  background: linear-gradient(180deg, var(--background-elevated) 0%, var(--surface-subtle) 100%);
-  box-shadow: var(--shadow-lg);
+  border-color: var(--border-accent-soft);
+  background: var(--background-soft);
 }
 
 .effort-option.active {
   border-color: var(--border-accent-strong);
-  background: linear-gradient(180deg, var(--surface-active) 0%, rgba(255, 247, 241, 0.98) 100%);
-  box-shadow: 0 14px 30px rgba(239, 91, 42, 0.12);
+  background: rgba(239, 91, 42, 0.06);
 }
 
 .effort-option-label {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: var(--surface-active);
-  color: var(--primary-color-strong);
+  min-height: 18px;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-color);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .effort-option.active .effort-option-label {
-  background: var(--surface-active-strong);
+  color: var(--primary-color-strong);
 }
 
 .effort-option-desc {
+  flex: 1 1 auto;
+  width: 100%;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 960px) {

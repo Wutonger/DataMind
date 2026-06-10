@@ -22,18 +22,10 @@
             <ChatMessage
               v-for="(msg, index) in compressedMessages"
               :key="`compressed-${index}`"
-              :msg="{
-                id: `compressed-${index}`,
-                role: msg.role === 'user' ? 'user' : 'assistant',
-                content: msg.content || '',
-                reasoning: msg.reasoning || '',
-                reasoningEnabled: Boolean(msg.reasoning),
-                steps: msg.steps || [],
-                citations: msg.citations || []
-              }"
+              :msg="toCompressedDisplayMessage(msg, index)"
               :live="false"
-              :steps="msg.steps || []"
-              :completed-steps="(msg.steps || []).filter((s: any) => s.status === 'COMPLETED' || s.status === 'FAILED' || s.status === 'SKIPPED').length"
+              :steps="toCompressedDisplayMessage(msg, index).mergedSteps"
+              :completed-steps="toCompressedDisplayMessage(msg, index).completedSteps"
               @open-citation="openCitationPreview"
             />
           </template>
@@ -89,16 +81,55 @@
             <template #icon><GitNetworkOutline /></template>
             查看执行链路
           </n-button>
-          <n-button
-            quaternary
-            size="small"
-            :loading="compressing"
-            :disabled="!sessionId"
-            @click="compressContext"
+          <n-popover
+            v-if="contextUsage"
+            trigger="hover"
+            placement="top"
+            :show-arrow="false"
+            :theme-overrides="contextUsagePopoverThemeOverrides"
           >
-            <template #icon><ContractOutline /></template>
-            压缩上下文
-          </n-button>
+            <template #trigger>
+              <button
+                type="button"
+                class="context-usage-trigger"
+                :class="`is-${contextUsage.warningLevel}`"
+                :style="contextUsageRingStyle"
+                aria-label="查看上下文占用详情"
+              >
+                <span class="context-usage-ring">
+                  <span class="context-usage-ring-value">{{ contextUsagePercentLabel }}</span>
+                </span>
+              </button>
+            </template>
+            <div class="context-usage-panel">
+              <div class="context-usage-panel-head">
+                <div class="context-usage-panel-copy">
+                  <span class="context-usage-panel-label">上下文占用</span>
+                  <strong>{{ contextUsagePrimaryText }}</strong>
+                </div>
+                <span class="context-usage-panel-meta">{{ contextUsageSecondaryText }}</span>
+              </div>
+              <div class="context-usage-tooltip-track">
+                <div
+                  class="context-usage-tooltip-fill"
+                  :class="`is-${contextUsage.warningLevel}`"
+                  :style="{ width: `${contextUsageBarPercent}%` }"
+                ></div>
+              </div>
+              <div class="context-usage-tooltip-hint">{{ contextUsageHintText }}</div>
+              <n-button
+                quaternary
+                size="small"
+                class="context-usage-panel-action"
+                :loading="compressing"
+                :disabled="!sessionId"
+                @click="compressContext"
+              >
+                <template #icon><ContractOutline /></template>
+                压缩上下文
+              </n-button>
+            </div>
+          </n-popover>
           <n-button quaternary size="small" :disabled="!sessionId" @click="clearChat">
             <template #icon><TrashOutline /></template>
             清空会话
@@ -233,11 +264,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NInput, NModal, NSpin, useMessage } from 'naive-ui'
+import { NButton, NInput, NModal, NPopover, NSpin, useMessage } from 'naive-ui'
 import { ContractOutline, GitNetworkOutline, PaperPlaneOutline, TrashOutline } from '@vicons/ionicons5'
 import type {
   AgentEvent,
   AgentStep,
+  ChatContextUsage,
   KnowledgeCitation,
   KnowledgePreview,
   KnowledgePreviewChunk
@@ -251,6 +283,17 @@ interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string
+  reasoningEnabled?: boolean
+  steps?: AgentStep[]
+  citations?: KnowledgeCitation[]
+}
+
+interface HistoryMessageLike {
+  id?: string
+  role?: string
+  content?: string
+  text?: string
   reasoning?: string
   reasoningEnabled?: boolean
   steps?: AgentStep[]
@@ -294,7 +337,8 @@ const activeKnowledgeChunkIndex = ref<number | null>(null)
 const compressionSummary = ref<string | null>(null)
 const compressionTime = ref<string | null>(null)
 const showCompressionSummary = ref(false)
-const compressedMessages = ref<Array<Map<string, any>>>([])
+const compressedMessages = ref<HistoryMessageLike[]>([])
+const contextUsage = ref<ChatContextUsage | null>(null)
 
 let messageIdSeed = 0
 let historyAutoScrollTimer: number | null = null
@@ -397,6 +441,29 @@ const mergeAdjacentSteps = (steps?: AgentStep[]): MergedAgentStep[] => {
 const countFinishedSteps = (steps: MergedAgentStep[]) =>
   steps.filter((step) => isStepFinished(step.status)).length
 
+const formatTokenCount = (value: number) => {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`
+  }
+  return String(value)
+}
+
+const toCompressedDisplayMessage = (msg: HistoryMessageLike, index: number) => {
+  const rawSteps = msg.steps || []
+  const mergedSteps = mergeAdjacentSteps(rawSteps)
+  return {
+    id: `compressed-${index}`,
+    role: msg.role === 'user' ? 'user' : 'assistant',
+    content: msg.content || '',
+    reasoning: msg.reasoning || '',
+    reasoningEnabled: Boolean(msg.reasoning),
+    steps: rawSteps,
+    citations: msg.citations || [],
+    mergedSteps,
+    completedSteps: countFinishedSteps(mergedSteps)
+  }
+}
+
 const toDisplayMessage = (
   messageItem: ConversationMessage,
   options: { live?: boolean } = {}
@@ -432,6 +499,110 @@ const renderedMessages = computed<DisplayMessage[]>(() => {
 })
 
 const hasVisibleMessages = computed(() => renderedMessages.value.length > 0)
+const contextUsageDisplayLimit = computed(() => {
+  if (!contextUsage.value) {
+    return 0
+  }
+
+  if (contextUsage.value.maxContextTokens && contextUsage.value.maxContextTokens > 0) {
+    return contextUsage.value.maxContextTokens
+  }
+
+  return contextUsage.value.safeBudgetTokens > 0 ? contextUsage.value.safeBudgetTokens : 0
+})
+
+const contextUsagePercentValue = computed(() => {
+  if (!contextUsage.value) {
+    return 0
+  }
+
+  if (contextUsage.value.safeBudgetTokens > 0) {
+    return (contextUsage.value.usedTokens * 100) / contextUsage.value.safeBudgetTokens
+  }
+
+  return contextUsage.value.usagePercent ?? 0
+})
+
+const formatUsagePercent = (value: number) => {
+  if (value >= 10) {
+    return `${Math.round(value)}%`
+  }
+  if (value >= 1) {
+    return `${value.toFixed(1)}%`
+  }
+  if (value > 0) {
+    return `${Math.max(0.1, value).toFixed(1)}%`
+  }
+  return '0%'
+}
+
+const contextUsageBarPercent = computed(() => {
+  const percent = contextUsagePercentValue.value
+  if (percent <= 0) {
+    return 0
+  }
+  return Math.max(2, Math.min(percent, 100))
+})
+
+const contextUsagePercentLabel = computed(() => {
+  if (!contextUsage.value) {
+    return '--'
+  }
+
+  return formatUsagePercent(contextUsagePercentValue.value)
+})
+
+const contextUsagePrimaryText = computed(() => {
+  if (!contextUsage.value) {
+    return '--'
+  }
+
+  return formatUsagePercent(contextUsagePercentValue.value)
+})
+const contextUsageSecondaryText = computed(() => {
+  if (!contextUsage.value) {
+    return ''
+  }
+  if (contextUsage.value.maxContextTokens && contextUsage.value.maxContextTokens > 0) {
+    return `${formatTokenCount(contextUsage.value.usedTokens)} / ${formatTokenCount(contextUsage.value.maxContextTokens)}`
+  }
+  if (contextUsageDisplayLimit.value > 0) {
+    return `${formatTokenCount(contextUsage.value.usedTokens)} / ${formatTokenCount(contextUsageDisplayLimit.value)}`
+  }
+  return `约 ${formatTokenCount(contextUsage.value.usedTokens)} tokens`
+})
+const contextUsageHintText = computed(() => {
+  if (!contextUsage.value) {
+    return ''
+  }
+  if (contextUsage.value.warningLevel === 'danger') {
+    return '上下文已接近安全上限，建议尽快压缩后继续。'
+  }
+  if (contextUsage.value.warningLevel === 'warning') {
+    return '上下文正在逼近上限，继续追问前可以先压缩一次。'
+  }
+  return '包含系统提示、思考内容、工具描述和对话历史。'
+})
+const contextUsageRingStyle = computed(() => {
+  const percent = contextUsageBarPercent.value
+  return {
+    '--context-usage-progress': `${percent * 3.6}deg`
+  }
+})
+const contextUsagePopoverThemeOverrides = {
+  color: 'rgba(255, 252, 248, 0.98)',
+  textColor: '#3f3129',
+  padding: '12px 14px',
+  borderRadius: '16px',
+  boxShadow: '0 14px 36px rgba(122, 65, 35, 0.12)',
+  Popover: {
+    color: 'rgba(255, 252, 248, 0.98)',
+    textColor: '#3f3129',
+    borderRadius: '16px',
+    padding: '12px 14px',
+    boxShadow: '0 14px 36px rgba(122, 65, 35, 0.12)'
+  }
+}
 
 const currentKnowledgeChunk = computed(() => {
   const chunks = knowledgePreviewData.value?.chunks || []
@@ -646,6 +817,7 @@ const initSession = () => {
   messages.value = []
   currentAssistantMsg.value = null
   latestWorkflowRunId.value = ''
+  contextUsage.value = null
   compressionSummary.value = null
   compressionTime.value = null
   showCompressionSummary.value = false
@@ -711,12 +883,12 @@ const loadSessionHistory = async (targetSessionId: string) => {
     const res = await chatApi.getHistory(targetSessionId)
     // 处理新的响应格式
     const data = res.data
-    const rawMessages = Array.isArray(data) ? data : (data.messages || [])
+    const rawMessages = (Array.isArray(data) ? data : (data.messages || [])) as HistoryMessageLike[]
     
     // 过滤掉 system 消息（压缩摘要）
     messages.value = rawMessages
-      .filter((msg: any) => msg.role !== 'system')
-      .map((msg: any, index: number) => ({
+      .filter((msg) => msg.role !== 'system')
+      .map((msg, index: number) => ({
         id: msg.id || createMessageId(`history-${index}`),
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content || msg.text || '',
@@ -731,11 +903,26 @@ const loadSessionHistory = async (targetSessionId: string) => {
     compressionTime.value = data.compressedAt || null
     showCompressionSummary.value = false
     compressedMessages.value = data.compressedMessages || []
+    await loadContextUsage(targetSessionId)
     
     scrollHistoryToBottom()
   } catch (error) {
     console.error('Failed to load chat history', error)
     initSession()
+  }
+}
+
+const loadContextUsage = async (targetSessionId: string) => {
+  if (!targetSessionId) {
+    contextUsage.value = null
+    return
+  }
+
+  try {
+    const res = await chatApi.getContextUsage(targetSessionId)
+    contextUsage.value = res.data
+  } catch (error) {
+    console.error('Failed to load context usage', error)
   }
 }
 
@@ -861,6 +1048,14 @@ const sendMessage = async () => {
 }
 
 const handleAgentEvent = (event: AgentEvent) => {
+  if (event.type === 'CONTEXT_USAGE_UPDATED') {
+    bindSessionIdFromEvent(event)
+    if (event.data.contextUsage) {
+      contextUsage.value = event.data.contextUsage
+    }
+    return
+  }
+
   if (!currentAssistantMsg.value) {
     return
   }
@@ -1146,6 +1341,142 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.context-usage-trigger {
+  --context-usage-progress: 0deg;
+  --context-usage-accent: #ef5b2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: help;
+}
+
+.context-usage-trigger.is-warning {
+  --context-usage-accent: #ef8a24;
+}
+
+.context-usage-trigger.is-danger {
+  --context-usage-accent: #d64550;
+}
+
+.context-usage-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    conic-gradient(var(--context-usage-accent) var(--context-usage-progress), rgba(115, 77, 57, 0.14) 0deg),
+    rgba(255, 250, 245, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(131, 96, 76, 0.08);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.context-usage-ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--background-elevated);
+}
+
+.context-usage-trigger:hover .context-usage-ring {
+  transform: scale(1.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(131, 96, 76, 0.08),
+    0 6px 18px rgba(122, 65, 35, 0.08);
+}
+
+.context-usage-ring-value {
+  position: relative;
+  z-index: 1;
+  color: var(--text-color);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.context-usage-panel {
+  width: 228px;
+  padding: 2px 0;
+}
+
+.context-usage-panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-usage-panel-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-usage-panel-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.context-usage-panel-copy strong {
+  color: var(--text-color);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.context-usage-panel-meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.context-usage-tooltip-track {
+  overflow: hidden;
+  height: 5px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(115, 77, 57, 0.12);
+}
+
+.context-usage-tooltip-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ef5b2a 0%, #d64550 100%);
+  transition: width 0.28s ease;
+}
+
+.context-usage-tooltip-fill.is-warning {
+  background: linear-gradient(90deg, #ef8a24 0%, #ef5b2a 100%);
+}
+
+.context-usage-tooltip-fill.is-danger {
+  background: linear-gradient(90deg, #d64550 0%, #c85547 100%);
+}
+
+.context-usage-tooltip-hint {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.context-usage-panel-action {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
 }
 
 .composer-textarea :deep(.n-input) {

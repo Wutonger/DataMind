@@ -14,6 +14,7 @@ import com.datamine.analysis.agent.model.SqlExecutionResult;
 import com.datamine.analysis.agent.model.ToolExecutionRecord;
 import com.datamine.analysis.agent.prompt.PromptConstant;
 import com.datamine.analysis.agent.tool.*;
+import com.datamine.analysis.common.dto.chat.ChatContextUsageResponse;
 import com.datamine.analysis.agent.workflow.WorkflowRunTracker;
 import com.datamine.analysis.common.dto.knowledge.KnowledgeCitationDTO;
 import com.datamine.analysis.skills.tool.ToolStateKeys;
@@ -37,6 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 @Slf4j
 @Component
@@ -69,6 +71,7 @@ public class AssistantAgentOrchestrator {
                                           List<Message> conversationMessages,
                                           ChatModel chatModel,
                                           boolean reasoningEnabled,
+                                          Function<ChatExecutionResult, ChatContextUsageResponse> contextUsageCallback,
                                           Consumer<ChatExecutionResult> completionCallback) {
         return Flux.create(emitter -> {
             List<Map<String, Object>> executedSteps = Collections.synchronizedList(new ArrayList<>());
@@ -172,14 +175,14 @@ public class AssistantAgentOrchestrator {
                                             "message", message,
                                             "sessionId", conversationId
                                     )));
+                                    ChatExecutionResult executionResult = new ChatExecutionResult(message, finalSteps, "", finalCitations, null);
+                                    emitContextUsage(eventConsumer, conversationId, executionResult, contextUsageCallback);
                                     emitter.complete();
                                     persistChatFailureAsync(
                                             workflowRunId,
                                             setupStepId,
                                             conversationId,
-                                            message,
-                                            finalSteps,
-                                            finalCitations,
+                                            executionResult,
                                             completionCallback
                                     );
                                 },
@@ -216,6 +219,8 @@ public class AssistantAgentOrchestrator {
                                             "workflowRunId", workflowRunId,
                                             "sessionId", conversationId
                                     )));
+                                    ChatExecutionResult executionResult = new ChatExecutionResult(fullResponse, finalSteps, reasoning, finalCitations, null);
+                                    emitContextUsage(eventConsumer, conversationId, executionResult, contextUsageCallback);
                                     emitter.complete();
                                     persistChatCompletionAsync(
                                             workflowRunId,
@@ -224,10 +229,7 @@ public class AssistantAgentOrchestrator {
                                             conversationId,
                                             inputSummary,
                                             outputSummary,
-                                            fullResponse,
-                                            finalSteps,
-                                            reasoning,
-                                            finalCitations,
+                                            executionResult,
                                             chatProcessStepTracker,
                                             completionCallback
                                     );
@@ -253,14 +255,14 @@ public class AssistantAgentOrchestrator {
                         "message", message,
                         "sessionId", conversationId
                 )));
+                ChatExecutionResult executionResult = new ChatExecutionResult(message, finalSteps, "", finalCitations, null);
+                emitContextUsage(eventConsumer, conversationId, executionResult, contextUsageCallback);
                 emitter.complete();
                 persistChatFailureAsync(
                         workflowRunId,
                         setupStepId,
                         conversationId,
-                        message,
-                        finalSteps,
-                        finalCitations,
+                        executionResult,
                         completionCallback
                 );
             }
@@ -851,10 +853,7 @@ public class AssistantAgentOrchestrator {
                                             String conversationId,
                                             String inputSummary,
                                             String outputSummary,
-                                            String fullResponse,
-                                            List<Map<String, Object>> finalSteps,
-                                            String reasoning,
-                                            List<KnowledgeCitationDTO> finalCitations,
+                                            ChatExecutionResult executionResult,
                                             ChatProcessStepTracker chatProcessStepTracker,
                                             Consumer<ChatExecutionResult> completionCallback) {
         CompletableFuture.runAsync(() -> {
@@ -876,7 +875,7 @@ public class AssistantAgentOrchestrator {
             }
 
             try {
-                completionCallback.accept(new ChatExecutionResult(fullResponse, finalSteps, reasoning, finalCitations));
+                completionCallback.accept(executionResult);
             } catch (Exception e) {
                 log.error("Failed to persist chat history. sessionId={}, workflowRunId={}",
                         conversationId, workflowRunId, e);
@@ -887,26 +886,41 @@ public class AssistantAgentOrchestrator {
     private void persistChatFailureAsync(String workflowRunId,
                                          String setupStepId,
                                          String conversationId,
-                                         String message,
-                                         List<Map<String, Object>> finalSteps,
-                                         List<KnowledgeCitationDTO> finalCitations,
+                                         ChatExecutionResult executionResult,
                                          Consumer<ChatExecutionResult> completionCallback) {
         CompletableFuture.runAsync(() -> {
             try {
                 workflowRunTracker.failStep(workflowRunId, setupStepId, "执行准备失败", List.of("routeMode=" + ROUTE_MODE));
-                workflowRunTracker.failRun(workflowRunId, ROUTE_MODE, message);
+                workflowRunTracker.failRun(workflowRunId, ROUTE_MODE, executionResult.content());
             } catch (Exception e) {
                 log.error("Failed to persist chat workflow failure. sessionId={}, workflowRunId={}",
                         conversationId, workflowRunId, e);
             }
 
             try {
-                completionCallback.accept(new ChatExecutionResult(message, finalSteps, "", finalCitations));
+                completionCallback.accept(executionResult);
             } catch (Exception e) {
                 log.error("Failed to persist failed chat history. sessionId={}, workflowRunId={}",
                         conversationId, workflowRunId, e);
             }
         });
+    }
+
+    private void emitContextUsage(Consumer<String> eventConsumer,
+                                  String conversationId,
+                                  ChatExecutionResult executionResult,
+                                  Function<ChatExecutionResult, ChatContextUsageResponse> contextUsageCallback) {
+        try {
+            ChatContextUsageResponse contextUsage = contextUsageCallback.apply(executionResult);
+            if (contextUsage != null) {
+                eventConsumer.accept(toJsonEvent("CONTEXT_USAGE_UPDATED", Map.of(
+                        "sessionId", conversationId,
+                        "contextUsage", contextUsage
+                )));
+            }
+        } catch (Exception e) {
+            log.error("Failed to estimate context usage. sessionId={}", conversationId, e);
+        }
     }
 
     private String summarizeTitle(String text) {

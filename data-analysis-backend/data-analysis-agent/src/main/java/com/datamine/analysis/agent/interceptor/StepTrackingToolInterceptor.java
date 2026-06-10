@@ -18,6 +18,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -86,11 +87,15 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         String stepKind = descriptor.kind();
         String agentId = resolveAgentId();
         String owner = resolveOwner(agentId);
+        String stepSkillId = resolveStepSkillId(toolName, request.getArguments());
 
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("id", stepId);
         step.put("name", displayName);
         step.put("skill", resolveStepSkillName(toolName, request.getArguments()));
+        if (StringUtils.hasText(stepSkillId)) {
+            step.put("skillId", stepSkillId);
+        }
         step.put("displayName", displayName);
         step.put("description", description);
         step.put("kind", stepKind);
@@ -203,6 +208,13 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         return resolveFriendlySkillName(extractSkillName(arguments));
     }
 
+    private String resolveStepSkillId(String toolName, String arguments) {
+        if (!"read_skill".equalsIgnoreCase(toolName)) {
+            return "";
+        }
+        return normalizeSkillName(extractSkillName(arguments));
+    }
+
     private String resolveEventStepName(String toolName, String arguments, String displayName) {
         if (!"read_skill".equalsIgnoreCase(toolName)) {
             return toolName;
@@ -227,6 +239,13 @@ public final class StepTrackingToolInterceptor extends ToolInterceptor {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private String normalizeSkillName(String skillName) {
+        if (!StringUtils.hasText(skillName)) {
+            return "";
+        }
+        return skillName.trim().toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
     private String resolveFriendlySkillName(String skillName) {
