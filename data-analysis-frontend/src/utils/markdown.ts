@@ -78,8 +78,22 @@ const normalizeHtmlTableBlock = (html: string): string =>
 const normalizeRawHtmlTables = (content: string): string =>
   content.replace(/<table[\s\S]*?<\/table>/gi, (match) => `\n\n${normalizeHtmlTableBlock(match)}\n\n`)
 
+const splitCollapsedTableBoundary = (line: string): string[] => {
+  const match = line.match(/\|\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/)
+  if (!match || match.index === undefined) {
+    return [line]
+  }
+
+  const headerLine = line.slice(0, match.index + 1).trimEnd()
+  const separatorLine = line.slice(match.index + 1).trimStart()
+  return [headerLine, separatorLine.startsWith('|') ? separatorLine : `| ${separatorLine}`]
+}
+
 const parseTableRow = (line: string): string[] =>
   line.replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim())
+
+const isTableSeparatorLine = (line: string): boolean =>
+  /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)
 
 const parseCellContent = (content: string): string => {
   try {
@@ -97,7 +111,14 @@ const parseMarkdownTable = (tableText: string): string => {
   }
 
   const headers = parseTableRow(lines[0])
-  const dataRows = lines.slice(2).map((row) => parseTableRow(row))
+  const dataStartIndex = isTableSeparatorLine(lines[1]) ? 2 : 1
+  const dataRows = lines.slice(dataStartIndex).map((row) => {
+    const cells = parseTableRow(row).slice(0, headers.length)
+    while (cells.length < headers.length) {
+      cells.push('')
+    }
+    return cells
+  })
 
   let html = '<table><thead><tr>'
   headers.forEach((header) => {
@@ -126,6 +147,7 @@ export const renderMarkdownContent = (content: string): string => {
     const cleanText = normalizeRawHtmlTables(content)
       .replace(/\\n/g, '\n')
       .split('\n')
+      .flatMap((line) => splitCollapsedTableBoundary(line))
       .map((line) => (/^\s*\|/.test(line) ? line.trimStart() : line))
       .join('\n')
 
